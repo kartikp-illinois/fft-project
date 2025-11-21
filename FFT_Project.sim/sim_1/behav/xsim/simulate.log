@@ -1,0 +1,237 @@
+Time resolution is 1 ps
+========================================
+Starting 8-point FFT testbench with detailed monitoring
+========================================
+
+[5000] FSM: state=, next_state=, current_stage=x, bf_count=x
+[15000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[25000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[35000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[45000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[55000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[65000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[75000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[85000] Reset released
+
+[85000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[95000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+========================================
+LOADING INPUT DATA
+========================================
+[105000] Loading addr=0: (16384, 0)
+[105000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[115000] Loading addr=1: (0, 0)
+[115000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[125000] Loading addr=2: (-16384, 0)
+[125000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[135000] Loading addr=3: (0, 0)
+[135000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[145000] Loading addr=4: (16384, 0)
+[145000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[155000] Loading addr=5: (0, 0)
+[155000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[165000] Loading addr=6: (-16384, 0)
+[165000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[175000] Loading addr=7: (0, 0)
+[175000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[185000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+
+========================================
+VERIFYING LOADED DATA
+========================================
+[195000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[205000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[0] = (16384, 0)
+[215000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[225000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[1] = (0, 0)
+[235000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[245000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[2] = (-16384, 0)
+[255000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[265000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[3] = (0, 0)
+[275000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[285000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[4] = (16384, 0)
+[295000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[305000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[5] = (0, 0)
+[315000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[325000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[6] = (-16384, 0)
+[335000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[345000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+Memory[7] = (0, 0)
+
+========================================
+STARTING FFT COMPUTATION
+========================================
+[355000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[365000] busy=0
+[365000] FSM: state=IDLE, next_state=INIT_STAGE, current_stage=0, bf_count=0
+[375000] FSM: state=INIT_STAGE, next_state=COMPUTE, current_stage=0, bf_count=0
+[385000] COMPUTE: stage=0, bf_idx=0, we_mem=1
+[385000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=0, bf_count=0
+[395000] COMPUTE: stage=0, bf_idx=0, we_mem=1
+[395000] WE_PIPE: [0 0 0 0 0 1]
+[395000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=0, bf_count=1
+[405000] COMPUTE: stage=0, bf_idx=1, we_mem=1
+[405000] BF_IN: x0=(16384,0), x1=(0,0), tw=(32767,0)
+[405000] WE_PIPE: [0 0 0 0 1 1]
+[405000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=0, bf_count=2
+[415000] COMPUTE: stage=0, bf_idx=2, we_mem=1
+[415000] BF_IN: x0=(-16384,0), x1=(0,0), tw=(32767,0)
+[415000] WE_PIPE: [0 0 0 1 1 1]
+[415000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=0, bf_count=3
+[425000] COMPUTE: stage=0, bf_idx=3, we_mem=1
+[425000] BF_IN: x0=(16384,0), x1=(0,0), tw=(32767,0)
+[425000] WE_PIPE: [0 0 1 1 1 1]
+[425000] FSM: state=COMPUTE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=4
+[435000] BF_IN: x0=(-16384,0), x1=(0,0), tw=(32767,0)
+[435000] WE_PIPE: [0 1 1 1 1 1]
+[435000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[445000] BF_IN: x0=(16384,0), x1=(0,0), tw=(32767,0)
+[445000] WE_PIPE: [1 1 1 1 1 0]
+[445000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[455000] WE_PIPE: [1 1 1 1 0 0]
+[455000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[465000] ADDR_GEN: addr_x0=0, addr_x1=1, tw_addr=0, wr_y0=0, wr_y1=1
+[465000] BF_OUT: y0=(16384,0), y1=(16384,0), we_pipe[5]=1
+[465000] WE_PIPE: [1 1 1 0 0 0]
+[465000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[475000] ADDR_GEN: addr_x0=0, addr_x1=1, tw_addr=0, wr_y0=0, wr_y1=1
+[475000] BF_OUT: y0=(-16384,0), y1=(-16384,0), we_pipe[5]=1
+[475000] WE_PIPE: [1 1 0 0 0 0]
+[475000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[485000] ADDR_GEN: addr_x0=0, addr_x1=1, tw_addr=0, wr_y0=0, wr_y1=1
+[485000] BF_OUT: y0=(16384,0), y1=(16384,0), we_pipe[5]=1
+[485000] WE_PIPE: [1 0 0 0 0 0]
+[485000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[495000] ADDR_GEN: addr_x0=0, addr_x1=1, tw_addr=0, wr_y0=0, wr_y1=1
+[495000] BF_OUT: y0=(-16384,0), y1=(-16384,0), we_pipe[5]=0
+[495000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[505000] ADDR_GEN: addr_x0=0, addr_x1=1, tw_addr=0, wr_y0=0, wr_y1=1
+[505000] BF_OUT: y0=(16384,0), y1=(16384,0), we_pipe[5]=0
+[505000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=0, bf_count=5
+[515000] FSM: state=DRAIN_PIPELINE, next_state=NEXT_STAGE, current_stage=0, bf_count=5
+[525000] FSM: state=NEXT_STAGE, next_state=INIT_STAGE, current_stage=0, bf_count=5
+[535000] FSM: state=INIT_STAGE, next_state=COMPUTE, current_stage=1, bf_count=5
+[545000] COMPUTE: stage=1, bf_idx=0, we_mem=1
+[545000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=1, bf_count=0
+[555000] COMPUTE: stage=1, bf_idx=0, we_mem=1
+[555000] WE_PIPE: [0 0 0 0 0 1]
+[555000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=1, bf_count=1
+[565000] COMPUTE: stage=1, bf_idx=1, we_mem=1
+[565000] BF_IN: x0=(16384,0), x1=(-16384,0), tw=(32767,0)
+[565000] WE_PIPE: [0 0 0 0 1 1]
+[565000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=1, bf_count=2
+[575000] COMPUTE: stage=1, bf_idx=2, we_mem=1
+[575000] BF_IN: x0=(0,0), x1=(0,0), tw=(0,-32768)
+[575000] WE_PIPE: [0 0 0 1 1 1]
+[575000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=1, bf_count=3
+[585000] COMPUTE: stage=1, bf_idx=3, we_mem=1
+[585000] BF_IN: x0=(16384,0), x1=(-16384,0), tw=(32767,0)
+[585000] WE_PIPE: [0 0 1 1 1 1]
+[585000] FSM: state=COMPUTE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=4
+[595000] BF_IN: x0=(0,0), x1=(0,0), tw=(0,-32768)
+[595000] WE_PIPE: [0 1 1 1 1 1]
+[595000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[605000] BF_IN: x0=(16384,0), x1=(-16384,0), tw=(32767,0)
+[605000] WE_PIPE: [1 1 1 1 1 0]
+[605000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[615000] WE_PIPE: [1 1 1 1 0 0]
+[615000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[625000] ADDR_GEN: addr_x0=0, addr_x1=2, tw_addr=0, wr_y0=0, wr_y1=2
+[625000] BF_OUT: y0=(0,0), y1=(-32768,0), we_pipe[5]=1
+[625000] WE_PIPE: [1 1 1 0 0 0]
+[625000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[635000] ADDR_GEN: addr_x0=0, addr_x1=2, tw_addr=0, wr_y0=0, wr_y1=2
+[635000] BF_OUT: y0=(0,0), y1=(0,0), we_pipe[5]=1
+[635000] WE_PIPE: [1 1 0 0 0 0]
+[635000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[645000] ADDR_GEN: addr_x0=0, addr_x1=2, tw_addr=0, wr_y0=0, wr_y1=2
+[645000] BF_OUT: y0=(0,0), y1=(-32768,0), we_pipe[5]=1
+[645000] WE_PIPE: [1 0 0 0 0 0]
+[645000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[655000] ADDR_GEN: addr_x0=0, addr_x1=2, tw_addr=0, wr_y0=0, wr_y1=2
+[655000] BF_OUT: y0=(0,0), y1=(0,0), we_pipe[5]=0
+[655000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[665000] ADDR_GEN: addr_x0=0, addr_x1=2, tw_addr=0, wr_y0=0, wr_y1=2
+[665000] BF_OUT: y0=(0,0), y1=(-32768,0), we_pipe[5]=0
+[665000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=1, bf_count=5
+[675000] FSM: state=DRAIN_PIPELINE, next_state=NEXT_STAGE, current_stage=1, bf_count=5
+[685000] FSM: state=NEXT_STAGE, next_state=INIT_STAGE, current_stage=1, bf_count=5
+[695000] FSM: state=INIT_STAGE, next_state=COMPUTE, current_stage=2, bf_count=5
+[705000] COMPUTE: stage=2, bf_idx=0, we_mem=1
+[705000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=2, bf_count=0
+[715000] COMPUTE: stage=2, bf_idx=0, we_mem=1
+[715000] WE_PIPE: [0 0 0 0 0 1]
+[715000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=2, bf_count=1
+[725000] COMPUTE: stage=2, bf_idx=1, we_mem=1
+[725000] BF_IN: x0=(16384,0), x1=(16384,0), tw=(32767,0)
+[725000] WE_PIPE: [0 0 0 0 1 1]
+[725000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=2, bf_count=2
+[735000] COMPUTE: stage=2, bf_idx=2, we_mem=1
+[735000] BF_IN: x0=(0,0), x1=(0,0), tw=(23170,-23170)
+[735000] WE_PIPE: [0 0 0 1 1 1]
+[735000] FSM: state=COMPUTE, next_state=COMPUTE, current_stage=2, bf_count=3
+[745000] COMPUTE: stage=2, bf_idx=3, we_mem=1
+[745000] BF_IN: x0=(-16384,0), x1=(-16384,0), tw=(0,-32768)
+[745000] WE_PIPE: [0 0 1 1 1 1]
+[745000] FSM: state=COMPUTE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=4
+[755000] BF_IN: x0=(0,0), x1=(0,0), tw=(-23170,-23170)
+[755000] WE_PIPE: [0 1 1 1 1 1]
+[755000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[765000] BF_IN: x0=(16384,0), x1=(16384,0), tw=(32767,0)
+[765000] WE_PIPE: [1 1 1 1 1 0]
+[765000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[775000] WE_PIPE: [1 1 1 1 0 0]
+[775000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[785000] ADDR_GEN: addr_x0=0, addr_x1=4, tw_addr=0, wr_y0=0, wr_y1=4
+[785000] BF_OUT: y0=(32767,0), y1=(1,0), we_pipe[5]=1
+[785000] WE_PIPE: [1 1 1 0 0 0]
+[785000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[795000] ADDR_GEN: addr_x0=0, addr_x1=4, tw_addr=0, wr_y0=0, wr_y1=4
+[795000] BF_OUT: y0=(0,0), y1=(0,0), we_pipe[5]=1
+[795000] WE_PIPE: [1 1 0 0 0 0]
+[795000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[805000] ADDR_GEN: addr_x0=0, addr_x1=4, tw_addr=0, wr_y0=0, wr_y1=4
+[805000] BF_OUT: y0=(-16384,16384), y1=(-16384,-16384), we_pipe[5]=1
+[805000] WE_PIPE: [1 0 0 0 0 0]
+[805000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[815000] ADDR_GEN: addr_x0=0, addr_x1=4, tw_addr=0, wr_y0=0, wr_y1=4
+[815000] BF_OUT: y0=(0,0), y1=(0,0), we_pipe[5]=0
+[815000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[825000] ADDR_GEN: addr_x0=0, addr_x1=4, tw_addr=0, wr_y0=0, wr_y1=4
+[825000] BF_OUT: y0=(32767,0), y1=(1,0), we_pipe[5]=0
+[825000] FSM: state=DRAIN_PIPELINE, next_state=DRAIN_PIPELINE, current_stage=2, bf_count=5
+[835000] FSM: state=DRAIN_PIPELINE, next_state=FINISH, current_stage=2, bf_count=5
+
+[835000] FFT computation complete!
+[845000] FFT DONE
+[845000] FSM: state=FINISH, next_state=IDLE, current_stage=2, bf_count=5
+[855000] FSM: state=IDLE, next_state=IDLE, current_stage=2, bf_count=5
+[865000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[875000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[885000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[895000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[905000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[915000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[925000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+
+========================================
+FFT OUTPUT RESULTS
+========================================
+Index | Real (hex) | Real (dec) | Imag (hex) | Imag (dec)
+------|------------|------------|------------|------------
+[935000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[945000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+  0   | 4000     |  16384     | 0000     |      0
+[955000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[965000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+  1   | 0000     |      0     | 0000     |      0
+[975000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+[985000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0
+  2   | c000     | -16384     | 0000     |      0
+[995000] FSM: state=IDLE, next_state=IDLE, current_stage=0, bf_count=0

@@ -1,0 +1,12 @@
+0.7
+2020.2
+Oct 14 2022
+05:20:55
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.sim/sim_1/behav/xsim/glbl.v,1665704903,verilog,,,,glbl,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sim_1/new/fft_8point_top_tb.sv,1763684306,systemVerilog,,,,fft_8point_top_tb,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/butterfly.sv,1763680110,systemVerilog,,C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_address_gen.sv,,butterfly,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_address_gen.sv,1763683312,systemVerilog,,C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_bram.sv,,fft_address_gen,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_bram.sv,1763684585,systemVerilog,,C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_control.sv,,fft_bram,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_control.sv,1763692601,systemVerilog,,C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_top.sv,,fft_control,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/fft_top.sv,1763692440,systemVerilog,,C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/twiddle_rom.sv,,fft_top,,uvm,,,,,,
+C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sources_1/new/twiddle_rom.sv,1763680125,systemVerilog,,C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.srcs/sim_1/new/fft_8point_top_tb.sv,,twiddle_rom,,uvm,,,,,,
