@@ -112,8 +112,8 @@ always_ff @(posedge clk) begin
         
         // ===== STAGE 3: Combine Products & Scale =====
         // Scale down from 2*WIDTH to WIDTH (remove lower FRAC_BITS)
-        prod_re <= ((prod1_r - prod2_r) >>> FRAC_BITS);
-        prod_im <= ((prod3_r + prod4_r) >>> FRAC_BITS);
+        prod_re <= ((prod1_r - prod2_r) >>> 15);  // x1_re*tw_re - x1_im*tw_im
+        prod_im <= ((prod3_r - prod4_r) >>> 15);  // x1_re*tw_im - x1_im*tw_re (FIXED!)
         x0_re_r3 <= x0_re_r2;
         x0_im_r3 <= x0_im_r2;
         valid_r3 <= valid_r2;
@@ -133,6 +133,30 @@ always_ff @(posedge clk) begin
         y1_re <= y1_re_r;
         y1_im <= y1_im_r;
         valid_out <= valid_r4;
+    end
+end
+
+// Add this to butterfly module for debugging
+initial begin
+    if ($test$plusargs("debug_butterfly")) begin
+        forever begin
+            @(posedge clk);
+            if (valid_r0) begin
+                $display("[BUTTERFLY] Stage0: x0=(%h,%h) x1=(%h,%h) tw=(%h,%h)", 
+                         x0_re_r0, x0_im_r0, x1_re_r0, x1_im_r0, tw_re_r0, tw_im_r0);
+            end
+            if (valid_r2) begin
+                $display("[BUTTERFLY] Stage2: prod1=%h prod2=%h prod3=%h prod4=%h", 
+                         prod1_r, prod2_r, prod3_r, prod4_r);
+            end
+            if (valid_r3) begin
+                $display("[BUTTERFLY] Stage3: prod_re=%h prod_im=%h", prod_re, prod_im);
+            end
+            if (valid_out) begin
+                $display("[BUTTERFLY] OUTPUT: y0=(%h,%h) y1=(%h,%h)", 
+                         y0_re, y0_im, y1_re, y1_im);
+            end
+        end
     end
 end
 

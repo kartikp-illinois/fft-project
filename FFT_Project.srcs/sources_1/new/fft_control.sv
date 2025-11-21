@@ -1,9 +1,5 @@
-`timescale 1ns / 1ps
-
 module fft_control #(
-    parameter FFT_SIZE = 8,
-    parameter NUM_STAGES = $clog2(FFT_SIZE),
-    parameter PIPELINE_DEPTH = 8  // 2 (BRAM + Twiddle ROM) + 6 (butterfly stages)
+    parameter FFT_SIZE = 8
 )(
     input  logic clk,
     input  logic rst,
@@ -31,13 +27,20 @@ state_t state, next_state;
 logic [1:0] current_stage;
 logic [$clog2(FFT_SIZE):0] bf_count;
 logic [$clog2(FFT_SIZE):0] butterflies_per_stage;
-logic [$clog2(FFT_SIZE):0] drain_count;
+logic [2:0] drain_count;
+localparam PIPELINE_DEPTH = 6;
 
+// Calculate butterflies per stage
 always_comb begin
-    // Calculate number of butterflies per stage
-    butterflies_per_stage = FFT_SIZE >> 1;  // Always N/2 butterflies per stage (4 for 8-point)
+    case (current_stage)
+        0: butterflies_per_stage = 4;  // Stage 0: 4 butterflies
+        1: butterflies_per_stage = 2;  // Stage 1: 2 butterflies  
+        2: butterflies_per_stage = 1;  // Stage 2: 1 butterfly
+        default: butterflies_per_stage = 0;
+    endcase
 end
 
+// State register
 always_ff @(posedge clk) begin
     if (rst) begin
         state <= IDLE;
@@ -65,14 +68,13 @@ always_ff @(posedge clk) begin
             end
             
             COMPUTE: begin
-                if (compute_enable) begin
-                    butterfly_idx <= bf_count;  // Output current count
-                    bf_count <= bf_count + 1;   // Then increment for next
+                if (bf_count < butterflies_per_stage) begin
+                    butterfly_idx <= bf_count;
+                    bf_count <= bf_count + 1;
                 end
             end
             
             DRAIN_PIPELINE: begin
-                // Count cycles to drain pipeline
                 drain_count <= drain_count + 1;
             end
             
@@ -82,12 +84,13 @@ always_ff @(posedge clk) begin
             end
             
             FINISH: begin
-                // Stay in finish for one cycle
+                // Hold finished state
             end
         endcase
     end
 end
 
+// Next state logic
 always_comb begin
     next_state = state;
     compute_enable = 0;
@@ -107,22 +110,18 @@ always_comb begin
         end
         
         COMPUTE: begin
-            compute_enable = 1;
-            we_mem = 1;  // Enable writes immediately (they'll be gated by pipeline)
+            compute_enable = (bf_count < butterflies_per_stage);
+            we_mem = 1;
             
-            // After processing all butterflies in this stage, move to drain
-            // Process butterflies 0 through (butterflies_per_stage-1)
-            // Transition when bf_count reaches butterflies_per_stage (after last one increments)
-            if (bf_count >= butterflies_per_stage)
+            if (bf_count >= butterflies_per_stage) 
                 next_state = DRAIN_PIPELINE;
         end
         
         DRAIN_PIPELINE: begin
-            we_mem = 1;  // Continue writing as results come out of pipeline
+            we_mem = 1;
             
-            // Wait for pipeline to fully drain (PIPELINE_DEPTH cycles after last input)
             if (drain_count >= PIPELINE_DEPTH) begin
-                if (current_stage >= NUM_STAGES - 1)
+                if (current_stage >= 2) // 3 stages for 8-point FFT (0,1,2)
                     next_state = FINISH;
                 else
                     next_state = NEXT_STAGE;
@@ -135,6 +134,7 @@ always_comb begin
         
         FINISH: begin
             done = 1;
+            busy = 0;
             next_state = IDLE;
         end
     endcase

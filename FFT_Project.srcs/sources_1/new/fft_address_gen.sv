@@ -5,8 +5,8 @@ module fft_address_gen #(
     input  logic clk,
     input  logic rst,
     input  logic start,
-    input  logic [1:0] stage,  // FFT stage number (0, 1, 2 for 8-point)
-    input  logic [ADDR_WIDTH:0] butterfly_idx,  // Which butterfly in current stage
+    input  logic [1:0] stage,
+    input  logic [ADDR_WIDTH:0] butterfly_idx,
     
     output logic [ADDR_WIDTH-1:0] addr_x0,
     output logic [ADDR_WIDTH-1:0] addr_x1,
@@ -16,11 +16,6 @@ module fft_address_gen #(
     output logic valid
 );
 
-// FFT addressing pattern (Decimation-In-Time Cooley-Tukey algorithm)
-// Stage 0: butterfly_span = 1, group_size = 2
-// Stage 1: butterfly_span = 2, group_size = 4
-// Stage 2: butterfly_span = 4, group_size = 8
-
 logic [ADDR_WIDTH-1:0] butterfly_span;
 logic [ADDR_WIDTH-1:0] group_size;
 logic [ADDR_WIDTH-1:0] group_idx;
@@ -28,42 +23,38 @@ logic [ADDR_WIDTH-1:0] bf_in_group;
 logic [ADDR_WIDTH-1:0] tw_mult;
 
 always_comb begin
-    // Calculate butterfly span and group size based on stage
-    butterfly_span = (ADDR_WIDTH)'(1 << stage);
-    group_size = (ADDR_WIDTH)'(1 << (stage + 1));
+    // Calculate addressing parameters based on stage
+    butterfly_span = (1 << stage);
+    group_size = (1 << (stage + 1));
     
-    // Determine position within groups
+    // Calculate group index and position within group
     group_idx = butterfly_idx / butterfly_span;
     bf_in_group = butterfly_idx % butterfly_span;
     
-    // Calculate addresses
+    // Read addresses
     addr_x0 = (group_idx * group_size) + bf_in_group;
     addr_x1 = addr_x0 + butterfly_span;
     
-    // Write addresses (same as read for in-place computation)
+    // Write addresses (in-place)
     wr_addr_y0 = addr_x0;
     wr_addr_y1 = addr_x1;
     
-    // Twiddle factor address
-    tw_mult = bf_in_group << (2 - stage);  // Adjusted for 8-point FFT
-    tw_addr = tw_mult % FFT_SIZE;
+    // Twiddle factor addressing
+    tw_mult = bf_in_group * (FFT_SIZE >> (stage + 1));
+    tw_addr = tw_mult;
 end
 
-// Pipeline the valid signal to match processing latency
-logic valid_pipe [0:6];  // 7-stage pipeline to match butterfly + BRAM latency
-
+// Simple valid signal - just pass through after small delay
+logic valid_d, valid_d2;
 always_ff @(posedge clk) begin
     if (rst) begin
-        for (int i = 0; i < 7; i++) begin
-            valid_pipe[i] <= 0;
-        end
+        valid_d <= 0;
+        valid_d2 <= 0;
         valid <= 0;
     end else begin
-        valid_pipe[0] <= start;
-        for (int i = 1; i < 7; i++) begin
-            valid_pipe[i] <= valid_pipe[i-1];
-        end
-        valid <= valid_pipe[6];
+        valid_d <= start;
+        valid_d2 <= valid_d;
+        valid <= valid_d2;
     end
 end
 
