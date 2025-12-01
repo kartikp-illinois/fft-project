@@ -2,7 +2,7 @@
 
 module fft_top #(
     parameter WIDTH = 16,
-    parameter FFT_SIZE = 8,
+    parameter FFT_SIZE = 256,
     parameter ADDR_WIDTH = $clog2(FFT_SIZE)
 )(
     input  logic clk,
@@ -18,7 +18,7 @@ module fft_top #(
 );
 
 // Internal signals
-logic [1:0] stage;
+logic [2:0] stage;
 logic [ADDR_WIDTH:0] butterfly_idx;
 logic compute_enable;
 logic we_mem;
@@ -36,44 +36,75 @@ logic bf_valid_in, bf_valid_out;
 
 // Memory control
 logic [ADDR_WIDTH-1:0] mem_addr_a, mem_addr_b;
-logic mem_we_a;
+logic mem_we_a, mem_we_b;
 logic signed [WIDTH-1:0] mem_din_a_re, mem_din_a_im;
+logic signed [WIDTH-1:0] mem_din_b_re, mem_din_b_im; // Added inputs for Port B
 logic signed [WIDTH-1:0] mem_dout_a_re, mem_dout_a_im;
 logic signed [WIDTH-1:0] mem_dout_b_re, mem_dout_b_im;
 
 // ========================================================================
 // FIXED: 6-STAGE PIPELINE WITH PROPER DECLARATIONS
 // ========================================================================
-logic [ADDR_WIDTH-1:0] wr_addr_y0_d [0:5];
-logic [ADDR_WIDTH-1:0] wr_addr_y1_d [0:5]; 
-logic we_pipe [0:5];
+localparam ADDR_PIPE_DEPTH = 9;  // 3 (read) + 6 (butterfly)
+
+logic [ADDR_WIDTH-1:0] wr_addr_y0_d [0:ADDR_PIPE_DEPTH-1];
+logic [ADDR_WIDTH-1:0] wr_addr_y1_d [0:ADDR_PIPE_DEPTH-1];
+logic we_pipe [0:ADDR_PIPE_DEPTH-1];
 
 // Write-back control
-logic wb_select;  
-logic signed [WIDTH-1:0] wb_data_re, wb_data_im;
-logic [ADDR_WIDTH-1:0] wb_addr;
-logic wb_enable;
 
-// FIXED: Added missing signal declarations
-logic signed [WIDTH-1:0] y1_re_hold, y1_im_hold;
-logic [ADDR_WIDTH-1:0] wr_addr_y1_hold;
+// Data Delay Pipeline (2 cycles)
+logic signed [WIDTH-1:0] x0_re_d, x0_im_d, x0_re_d2, x0_im_d2;
+logic signed [WIDTH-1:0] x1_re_d, x1_im_d, x1_re_d2, x1_im_d2;
+// Twiddle Delay (1 cycle) - to align with 2-cycle data delay
+logic signed [WIDTH-1:0] tw_re_d, tw_im_d;
+
+always_ff @(posedge clk) begin
+    // Stage 1: Capture from RAM
+    x0_re_d <= mem_dout_a_re;
+    x0_im_d <= mem_dout_a_im;
+    x1_re_d <= mem_dout_b_re;
+    x1_im_d <= mem_dout_b_im;
+    
+    // Stage 2: Extra delay to ensure Odd Latency (Total 3 cycles before BF)
+    x0_re_d2 <= x0_re_d;
+    x0_im_d2 <= x0_im_d;
+    x1_re_d2 <= x1_re_d;
+    x1_im_d2 <= x1_im_d;
+    
+    // Twiddle Alignment: RAM data is Latency 1+2=3. Twiddle ROM is Latency 2.
+    // We need 1 register here to make Twiddle Latency 3.
+    tw_re_d <= tw_re;
+    tw_im_d <= tw_im;
+end
+
+
+logic [31:0] tw_data;
+
+blk_mem_gen_0 tw_rom (
+    .clka  (clk),
+    .ena   (1'b1),
+    .addra (tw_addr),
+    .douta (tw_data)
+);
+
+assign tw_re = tw_data[31:16];
+assign tw_im = tw_data[15:0];
 
 // Pipeline the write addresses
 always_ff @(posedge clk) begin
     if (rst) begin
-        for (int i = 0; i < 6; i++) begin
+        for (int i = 0; i < ADDR_PIPE_DEPTH; i++) begin
             wr_addr_y0_d[i] <= 0;
             wr_addr_y1_d[i] <= 0;
             we_pipe[i] <= 0;
         end
     end else begin
-        // Stage 0 input
         wr_addr_y0_d[0] <= wr_addr_y0;
         wr_addr_y1_d[0] <= wr_addr_y1;
-        we_pipe[0] <= we_mem && compute_enable;
+        we_pipe[0] <= we_mem && compute_enable;  // Changed back
         
-        // Shift pipeline
-        for (int i = 1; i < 6; i++) begin
+        for (int i = 1; i < ADDR_PIPE_DEPTH; i++) begin
             wr_addr_y0_d[i] <= wr_addr_y0_d[i-1];
             wr_addr_y1_d[i] <= wr_addr_y1_d[i-1];
             we_pipe[i] <= we_pipe[i-1];
@@ -81,92 +112,69 @@ always_ff @(posedge clk) begin
     end
 end
 
-// FIXED: Use index 5 for 6-stage pipeline (consistent)
-assign wb_enable = (bf_valid_out && we_pipe[5] && wb_select == 0) || 
-                   (wb_select == 1);
-
-always_ff @(posedge clk) begin
-    if (rst) begin
-        wb_select <= 0;
-        y1_re_hold <= 0;
-        y1_im_hold <= 0;
-        wr_addr_y1_hold <= 0;
-    end else begin
-        // FIXED: Use index 5 (consistent with pipeline depth)
-        if (bf_valid_out && we_pipe[5] && wb_select == 0) begin
-            wb_select <= 1;
-            y1_re_hold <= y1_re;
-            y1_im_hold <= y1_im;
-            wr_addr_y1_hold <= wr_addr_y1_d[5]; // Capture address from pipe end
-        end else if (wb_select == 1) begin
-            wb_select <= 0;
-        end
-    end
-end
-
-always_comb begin
-    if (wb_select == 0) begin
-        wb_data_re = y0_re;
-        wb_data_im = y0_im;
-        wb_addr = wr_addr_y0_d[5]; // FIXED: Use index 5
-    end else begin
-        wb_data_re = y1_re_hold;
-        wb_data_im = y1_im_hold;
-        wb_addr = wr_addr_y1_hold;
-    end
-end
 
 // Memory interface multiplexing
 always_comb begin
+    // Defaults (Read Phase / Idle)
+    mem_we_a = 0;
+    mem_we_b = 0;
+    mem_addr_a = addr_x0;
+    mem_addr_b = addr_x1;
+    mem_din_a_re = 0; mem_din_a_im = 0;
+    mem_din_b_re = 0; mem_din_b_im = 0;
+
     if (load_enable) begin
+        // External Load
         mem_addr_a = load_addr;
         mem_we_a = 1;
         mem_din_a_re = load_data_re;
         mem_din_a_im = load_data_im;
-        mem_addr_b = read_addr;
-    end else if (wb_enable) begin
-        mem_addr_a = wb_addr;
-        mem_we_a = 1;
-        mem_din_a_re = wb_data_re;
-        mem_din_a_im = wb_data_im;
-        mem_addr_b = addr_x1;
+        mem_addr_b = read_addr; // During load, Port B can be used for read/debug
     end else if (busy) begin
-        mem_addr_a = addr_x0;
-        mem_we_a = 0;
-        mem_din_a_re = 0;
-        mem_din_a_im = 0;
-        mem_addr_b = addr_x1;
+        // During FFT operation: Check if we have a result to write
+        if (bf_valid_out && we_pipe[ADDR_PIPE_DEPTH-1]) begin
+            // WRITE PHASE: Write y0 to Port A, y1 to Port B
+            mem_we_a = 1;
+            mem_addr_a = wr_addr_y0_d[ADDR_PIPE_DEPTH-1];
+            mem_din_a_re = y0_re;
+            mem_din_a_im = y0_im;
+            
+            mem_we_b = 1;
+            mem_addr_b = wr_addr_y1_d[ADDR_PIPE_DEPTH-1];
+            mem_din_b_re = y1_re;
+            mem_din_b_im = y1_im;
+        end 
+        // Else: READ PHASE (defaults hold: addr_x0/x1)
     end else begin
+        // Final Readout
         mem_addr_a = read_addr;
-        mem_we_a = 0;
-        mem_din_a_re = 0;
-        mem_din_a_im = 0;
         mem_addr_b = 0;
     end
     
-    x0_re = mem_dout_a_re;
-    x0_im = mem_dout_a_im;
-    x1_re = mem_dout_b_re;
-    x1_im = mem_dout_b_im;
-    
+    // Data to pipeline delay registers
+    // Note: If we are writing, mem_dout is undefined/old, 
+    // but we only capture valid data when compute_toggle allows it (Read Phase).
     read_data_re = mem_dout_a_re;
     read_data_im = mem_dout_a_im;
 end
 
-// Delay valid signal by 2 cycles (Memory Read + Twiddle ROM Latency)
-logic bf_valid_in_d, bf_valid_in_d2;
+// Delay valid signal by 3 cycles (data BRAM 1 + twiddle ROM 2)
+logic bf_valid_in_d, bf_valid_in_d2, bf_valid_in_d3;
 
 always_ff @(posedge clk) begin
     if (rst) begin
-        bf_valid_in_d <= 0;
+        bf_valid_in_d  <= 0;
         bf_valid_in_d2 <= 0;
+        bf_valid_in_d3 <= 0;
     end else begin
-        bf_valid_in_d <= compute_enable;
+        bf_valid_in_d  <= compute_enable;  // Changed
         bf_valid_in_d2 <= bf_valid_in_d;
+        bf_valid_in_d3 <= bf_valid_in_d2;
     end
 end
 
-assign bf_valid_in = bf_valid_in_d2;
+assign bf_valid_in = bf_valid_in_d3;
+
 
 // Module Instantiations
 fft_control #(.FFT_SIZE(FFT_SIZE)) ctrl (
@@ -177,28 +185,37 @@ fft_control #(.FFT_SIZE(FFT_SIZE)) ctrl (
 );
 
 fft_address_gen #(.FFT_SIZE(FFT_SIZE)) addr_gen (
-    .clk(clk), .rst(rst), .start(compute_enable),
+    .clk(clk), .rst(rst), 
+    .start(compute_enable),
     .stage(stage), .butterfly_idx(butterfly_idx),
     .addr_x0(addr_x0), .addr_x1(addr_x1), .tw_addr(tw_addr),
     .wr_addr_y0(wr_addr_y0), .wr_addr_y1(wr_addr_y1), .valid(addr_valid)
 );
 
-twiddle_rom #(.WIDTH(WIDTH), .FFT_SIZE(FFT_SIZE)) tw_rom (
-    .clk(clk), .addr(tw_addr), .tw_re(tw_re), .tw_im(tw_im)
-);
+//twiddle_rom #(.WIDTH(WIDTH), .FFT_SIZE(FFT_SIZE)) tw_rom (
+//    .clk(clk), .addr(tw_addr), .tw_re(tw_re), .tw_im(tw_im)
+//);
 
 fft_bram #(.WIDTH(WIDTH), .DEPTH(FFT_SIZE)) data_mem (
     .clk(clk), 
+    // Port A
     .addr_a(mem_addr_a), .we_a(mem_we_a), 
     .din_a_re(mem_din_a_re), .din_a_im(mem_din_a_im), 
     .dout_a_re(mem_dout_a_re), .dout_a_im(mem_dout_a_im),
-    .addr_b(mem_addr_b), .dout_b_re(mem_dout_b_re), .dout_b_im(mem_dout_b_im)
+    // Port B (Now R/W)
+    .addr_b(mem_addr_b), .we_b(mem_we_b),  // NEW
+    .din_b_re(mem_din_b_re), .din_b_im(mem_din_b_im), // NEW
+    .dout_b_re(mem_dout_b_re), .dout_b_im(mem_dout_b_im)
 );
 
 butterfly #(.WIDTH(WIDTH)) bfu (
     .clk(clk), .rst(rst), .valid_in(bf_valid_in),
-    .x0_re(x0_re), .x0_im(x0_im), .x1_re(x1_re), .x1_im(x1_im),
-    .tw_re(tw_re), .tw_im(tw_im),
+    // Use d2 signals (2 cycle delay from RAM)
+    .x0_re(x0_re_d2), .x0_im(x0_im_d2), 
+    .x1_re(x1_re_d2), .x1_im(x1_im_d2),
+    // Use d signals (1 cycle delay from ROM)
+    .tw_re(tw_re_d),  .tw_im(tw_im_d),
+    // Outputs remain same
     .y0_re(y0_re), .y0_im(y0_im), .y1_re(y1_re), .y1_im(y1_im),
     .valid_out(bf_valid_out)
 );

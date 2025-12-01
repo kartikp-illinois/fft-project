@@ -1,11 +1,11 @@
 module fft_address_gen #(
-    parameter FFT_SIZE = 8,
+    parameter FFT_SIZE =256,
     parameter ADDR_WIDTH = $clog2(FFT_SIZE)
 )(
     input  logic clk,
     input  logic rst,
     input  logic start,
-    input  logic [1:0] stage,
+    input  logic [2:0] stage,
     input  logic [ADDR_WIDTH:0] butterfly_idx,
     
     output logic [ADDR_WIDTH-1:0] addr_x0,

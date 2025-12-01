@@ -14,7 +14,7 @@ logic signed [WIDTH-1:0] twiddle_imag [0:FFT_SIZE-1];
 // MATHEMATICALLY CORRECT 8-point twiddle factors (Q1.15 format)
 // W_8^k = cos(2?k/8) - j*sin(2?k/8)
 initial begin
-    // k=0: 1.000 + 0.000j
+    // k=0: 1.000 + 0.000j08
     twiddle_real[0] = 16'h7FFF; twiddle_imag[0] = 16'h0000;
     
     // k=1: 0.707 - 0.707j  

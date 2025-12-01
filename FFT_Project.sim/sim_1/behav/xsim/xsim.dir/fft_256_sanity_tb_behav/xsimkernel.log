@@ -1,0 +1,7 @@
+Running: xsim.dir/fft_256_sanity_tb_behav/xsimk.exe -simmode gui -wdb fft_256_sanity_tb_behav.wdb -simrunnum 0 -socket 65289
+Design successfully loaded
+Design Loading Memory Usage: 9564 KB (Peak: 9564 KB)
+Design Loading CPU Usage: 31 ms
+Simulation completed
+Simulation Memory Usage: 11004 KB (Peak: 11004 KB)
+Simulation CPU Usage: 155 ms

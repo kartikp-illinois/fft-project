@@ -40,4 +40,4 @@ EAStep()
      fi
 }
 
-EAStep vivado -log fft_top.vds -m64 -product Vivado -mode batch -messageDb vivado.pb -notrace -source fft_top.tcl
+EAStep vivado -log fft_accelerator.vds -m64 -product Vivado -mode batch -messageDb vivado.pb -notrace -source fft_accelerator.tcl
