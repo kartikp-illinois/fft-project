@@ -23,7 +23,7 @@ eval( EAInclude(ISEJScriptLib) );
 
 
 ISEStep( "vivado",
-         "-log fft_accelerator.vds -m64 -product Vivado -mode batch -messageDb vivado.pb -notrace -source fft_accelerator.tcl" );
+         "-log top.vds -m64 -product Vivado -mode batch -messageDb vivado.pb -notrace -source top.tcl" );
 
 
 

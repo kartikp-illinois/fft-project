@@ -2,12 +2,12 @@
 # Vivado v2022.2 (64-bit)
 # SW Build 3671981 on Fri Oct 14 05:00:03 MDT 2022
 # IP Build 3669848 on Fri Oct 14 08:30:02 MDT 2022
-# Start of session at: Mon Dec  1 14:42:02 2025
-# Process ID: 21872
-# Current directory: C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.runs/synth_1
-# Command line: vivado.exe -log fft_accelerator.vds -product Vivado -mode batch -messageDb vivado.pb -notrace -source fft_accelerator.tcl
-# Log file: C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.runs/synth_1/fft_accelerator.vds
-# Journal file: C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.runs/synth_1\vivado.jou
-# Running On: Kartik-Laptop, OS: Windows, CPU Frequency: 3072 MHz, CPU Physical cores: 16, Host memory: 33945 MB
+# Start of session at: Tue Dec  2 20:27:41 2025
+# Process ID: 36048
+# Current directory: C:/Users/kcs-m/Documents/ece385/kp61ProjectsBranch/ECE_385/FFT_Project/FFT_Project.runs/synth_1
+# Command line: vivado.exe -log top.vds -product Vivado -mode batch -messageDb vivado.pb -notrace -source top.tcl
+# Log file: C:/Users/kcs-m/Documents/ece385/kp61ProjectsBranch/ECE_385/FFT_Project/FFT_Project.runs/synth_1/top.vds
+# Journal file: C:/Users/kcs-m/Documents/ece385/kp61ProjectsBranch/ECE_385/FFT_Project/FFT_Project.runs/synth_1\vivado.jou
+# Running On: kcsZenbook, OS: Windows, CPU Frequency: 1996 MHz, CPU Physical cores: 20, Host memory: 24823 MB
 #-----------------------------------------------------------
-source fft_accelerator.tcl -notrace
+source top.tcl -notrace

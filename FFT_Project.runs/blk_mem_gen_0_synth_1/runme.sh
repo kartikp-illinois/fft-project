@@ -24,7 +24,7 @@ else
 fi
 export LD_LIBRARY_PATH
 
-HD_PWD='C:/Users/karti/Documents/ECE_385/FFT_Project/FFT_Project.runs/blk_mem_gen_0_synth_1'
+HD_PWD='C:/Users/kcs-m/Documents/ece385/kp61ProjectsBranch/ECE_385/FFT_Project/FFT_Project.runs/blk_mem_gen_0_synth_1'
 cd "$HD_PWD"
 
 HD_LOG=runme.log
