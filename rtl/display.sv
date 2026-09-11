@@ -1,221 +1,176 @@
-module  vga_controller ( input        pixel_clk,        // 50 MHz clock
-                                      reset,            // reset signal
-                         output logic hs,               // Horizontal sync pulse.  Active low
-								      vs,               // Vertical sync pulse.  Active low
-									  active_nblank,    // High = active, low = blanking interval
-									  sync,      // Composite Sync signal.  Active low.  We don't use it in this lab,
-									            //   but the video DAC on the DE2 board requires an input for it.
-						 output [9:0] drawX,     // horizontal coordinate
-						              drawY );   // vertical coordinate
-    
-    // 800 horizontal pixels indexed 0 to 799
-    // 525 vertical pixels indexed 0 to 524
-    parameter [9:0] hpixels = 10'b1100011111;
-    parameter [9:0] vlines = 10'b1000001100;
-	 
-	 // horizontal pixel and vertical line counters
-    logic [9:0] hc, vc;
-    
-	 // signal indicates if ok to display color for a pixel
-	 logic display;
-	 
-    //Disable Composite Sync
-    assign sync = 1'b0;
-     
-   
-	//Runs the horizontal counter  when it resets vertical counter is incremented
-   always_ff @ (posedge pixel_clk or posedge reset )
-	begin: counter_proc
-		  if ( reset ) 
-			begin 
-				 hc <= 10'b0000000000;
-				 vc <= 10'b0000000000;
-			end
-				
-		  else 
-			 if ( hc == hpixels )  //If hc has reached the end of pixel count
-			  begin 
-					hc <= 10'b0000000000;
-					if ( vc == vlines )   //if vc has reached end of line count
-						 vc <= 10'b0000000000;
-					else 
-						 vc <= (vc + 1);
-			  end
-			 else 
-				  hc <= (hc + 1);  //no statement about vc, implied vc <= vc;
-	 end 
-   
-    assign drawX = hc;
-    assign drawY = vc;
-   
-	 //horizontal sync pulse is 96 pixels long at pixels 656-752
-    //(signal is registered to ensure clean output waveform)
-    always_ff @ (posedge reset or posedge pixel_clk )
-    begin : hsync_proc
-        if ( reset ) 
-            hs <= 1'b0;
-        else  
-            if ((((hc + 1) >= 10'b1010010000) & ((hc + 1) < 10'b1011110000))) 
-                hs <= 1'b0;
-            else 
-				    hs <= 1'b1;
-    end
-	 
-    //vertical sync pulse is 2 lines(800 pixels) long at line 490-491
-    //(signal is registered to ensure clean output waveform)
-    always_ff @ (posedge reset or posedge pixel_clk )
-    begin : vsync_proc
-        if ( reset ) 
-           vs <= 1'b0;
-        else 
-            if ( ((vc + 1) == 9'b111101010) | ((vc + 1) == 9'b111101011) ) 
-			       vs <= 1'b0;
-            else 
-			       vs <= 1'b1;
-    end
-       
-    //only display pixels between horizontal 0-639 and vertical 0-479 (640x480)
-    //(This signal is registered within the DAC chip, so we can leave it as pure combinational logic here)    
-    always_comb
-    begin 
-        if ( (hc >= 10'b1010000000) | (vc >= 10'b0111100000) ) 
-            display = 1'b0;
-        else 
-            display = 1'b1;
-    end 
-   
-    assign active_nblank = display;    
+`timescale 1ns / 1ps
 
+// 640x480 @ 60 Hz timing for a 25 MHz pixel clock.
+module vga_controller (
+    input  logic       pixel_clk,
+    input  logic       reset,
+    output logic       hs,
+    output logic       vs,
+    output logic       active_nblank,
+    output logic       sync,
+    output logic [9:0] drawX,
+    output logic [9:0] drawY
+);
+    localparam integer H_ACTIVE = 640;
+    localparam integer H_FRONT  = 16;
+    localparam integer H_SYNC   = 96;
+    localparam integer H_TOTAL  = 800;
+    localparam integer V_ACTIVE = 480;
+    localparam integer V_FRONT  = 10;
+    localparam integer V_SYNC   = 2;
+    localparam integer V_TOTAL  = 525;
+
+    logic [9:0] h_count;
+    logic [9:0] v_count;
+
+    always_ff @(posedge pixel_clk) begin
+        if (reset) begin
+            h_count <= 10'd0;
+            v_count <= 10'd0;
+        end else if (h_count == H_TOTAL - 1) begin
+            h_count <= 10'd0;
+            if (v_count == V_TOTAL - 1)
+                v_count <= 10'd0;
+            else
+                v_count <= v_count + 1'b1;
+        end else begin
+            h_count <= h_count + 1'b1;
+        end
+    end
+
+    always_comb begin
+        drawX = h_count;
+        drawY = v_count;
+        hs = ~((h_count >= H_ACTIVE + H_FRONT) &&
+               (h_count < H_ACTIVE + H_FRONT + H_SYNC));
+        vs = ~((v_count >= V_ACTIVE + V_FRONT) &&
+               (v_count < V_ACTIVE + V_FRONT + V_SYNC));
+        active_nblank = (h_count < H_ACTIVE) && (v_count < V_ACTIVE);
+        sync = 1'b0;
+    end
 endmodule
 
 
-
-
-module bar_graph_color_mapper (
-    input logic clk,
-    input logic [9:0] drawX,
-    input logic [9:0] drawY,
-    input logic vde,
-    
-    // Memory interface to read bar heights
-    output logic [7:0] bar_read_addr,   // Address to read (0-255)
-    input logic [15:0] bar_read_value,  // 16-bit magnitude value
-    
-    // Configuration
-    input logic [15:0] max_value,       // Maximum value for Y-axis scaling
-    
-    output logic [3:0] red,
-    output logic [3:0] green,
-    output logic [3:0] blue
+// Converts the 256-bin magnitude buffer into an aligned RGB video stream.
+// The two pipeline cycles account for the synchronous display-buffer read and
+// magnitude scaling while delaying the video control signals by the same time.
+module bar_graph_color_mapper #(
+    parameter integer SCREEN_WIDTH = 640,
+    parameter integer SCREEN_HEIGHT = 480,
+    parameter integer DISPLAY_FULL_SCALE = 16384
+) (
+    input  logic        clk,
+    input  logic        reset,
+    input  logic [9:0]  drawX,
+    input  logic [9:0]  drawY,
+    input  logic        hsync_in,
+    input  logic        vsync_in,
+    input  logic        vde_in,
+    output logic [7:0]  bar_read_addr,
+    input  logic [15:0] bar_read_value,
+    output logic        hsync_out,
+    output logic        vsync_out,
+    output logic        vde_out,
+    output logic [3:0]  red,
+    output logic [3:0]  green,
+    output logic [3:0]  blue
 );
-    // Display parameters
-    parameter SCREEN_WIDTH = 640;
-    parameter SCREEN_HEIGHT = 480;
-    
-    //========================================================================
-    // PIPELINE STAGE 1: Calculate bar index and sample memory
-    //========================================================================
-    logic [9:0] drawX_q1, drawY_q1;
-    logic vde_q1;
+    logic [10:0] bin_numerator;
+
+    logic [9:0] drawY_q1;
+    logic hsync_q1, vsync_q1, vde_q1;
     logic [7:0] current_bar_q1;
-    
-    always_ff @(posedge clk) begin
-        drawX_q1 <= drawX;
-        drawY_q1 <= drawY;
-        vde_q1 <= vde;
-        
-        // Map X coordinate (0-639) to bar index (0-255)
-        // 640/256 = 2.5 pixels per bar
-        // Use shift instead of division: drawX >> 1 gives ~2 pixels per bar
-        // Slightly better: (drawX * 128) >> 8 = drawX / 2
-        current_bar_q1 <= drawX[9:1];  // Simple right shift by 1 = divide by 2
-        // This gives ~2 pixels per bar, close enough to 2.5
-    end
-    
-    // Memory address drives directly from pipeline register
-    assign bar_read_addr = current_bar_q1;
-    
-    //========================================================================
-    // PIPELINE STAGE 2: Scale bar height (pipelined multiplier)
-    //========================================================================
-    logic [9:0] drawX_q2, drawY_q2;
-    logic vde_q2;
+
+    logic [9:0] drawY_q2;
+    logic hsync_q2, vsync_q2, vde_q2;
     logic [7:0] current_bar_q2;
-    logic [25:0] scaled_product;  // Product of multiplication
-    
-    always_ff @(posedge clk) begin
-        drawX_q2 <= drawX_q1;
-        drawY_q2 <= drawY_q1;
-        vde_q2 <= vde_q1;
-        current_bar_q2 <= current_bar_q1;
-        
-        // Pipeline the multiplication
-        // bar_height = (bar_read_value * 480) / max_value
-        // First do multiplication: bar_read_value * 480
-        scaled_product <= bar_read_value * 16'd480;
+    logic [25:0] scaled_product_q2;
+    logic [25:0] scaled_height_raw;
+    logic [9:0] scaled_height;
+
+    // 256 / 640 = 2 / 5, so every active pixel maps exactly into 0..255.
+    always_comb begin
+        bin_numerator = {drawX, 1'b0};
+        if (drawX < SCREEN_WIDTH)
+            bar_read_addr = bin_numerator / 5;
+        else
+            bar_read_addr = 8'd0;
     end
-    
-    //========================================================================
-    // PIPELINE STAGE 3: Division (use shift approximation)
-    //========================================================================
-    logic [9:0] drawX_q3, drawY_q3;
-    logic vde_q3;
-    logic [7:0] current_bar_q3;
-    logic [9:0] bar_height_q3;
-    
+
+    // Stage 1: preserve the coordinates/control associated with the RAM read.
     always_ff @(posedge clk) begin
-        drawX_q3 <= drawX_q2;
-        drawY_q3 <= drawY_q2;
-        vde_q3 <= vde_q2;
-        current_bar_q3 <= current_bar_q2;
-        
-        // Avoid division! Use shift approximation
-        // If max_value is constant (0xFFFF), we can optimize
-        // scaled_product / 65536 is just a right shift by 16
-        bar_height_q3 <= scaled_product[25:16];  // Effectively divide by 65536
-        
-        // Clamp to screen height
-        if (scaled_product[25:16] > SCREEN_HEIGHT)
-            bar_height_q3 <= SCREEN_HEIGHT;
+        if (reset) begin
+            drawY_q1 <= 10'd0;
+            hsync_q1 <= 1'b0;
+            vsync_q1 <= 1'b0;
+            vde_q1 <= 1'b0;
+            current_bar_q1 <= 8'd0;
+        end else begin
+            drawY_q1 <= drawY;
+            hsync_q1 <= hsync_in;
+            vsync_q1 <= vsync_in;
+            vde_q1 <= vde_in;
+            current_bar_q1 <= bar_read_addr;
+        end
     end
-    
-    //========================================================================
-    // PIPELINE STAGE 4: Pixel decision and color output
-    //========================================================================
-    logic pixel_is_bar;
-    logic is_marker_bar;
-    
+
+    // Stage 2: the synchronous RAM result now matches the stage-1 metadata.
     always_ff @(posedge clk) begin
-        // Calculate if this Y position is within the bar
-        pixel_is_bar <= (drawY_q3 >= (SCREEN_HEIGHT - bar_height_q3));
-        
-        // Check if current bar is a marker (every 16th for easy bit masking)
-        is_marker_bar <= (current_bar_q3[3:0] == 4'b0000);  // Every 16 bars
-        
-        if (vde_q3) begin
-            if (pixel_is_bar) begin
-                if (is_marker_bar) begin
-                    // Marker bars - yellow
-                    red   <= 4'hF;
+        if (reset) begin
+            drawY_q2 <= 10'd0;
+            hsync_q2 <= 1'b0;
+            vsync_q2 <= 1'b0;
+            vde_q2 <= 1'b0;
+            current_bar_q2 <= 8'd0;
+            scaled_product_q2 <= 26'd0;
+        end else begin
+            drawY_q2 <= drawY_q1;
+            hsync_q2 <= hsync_q1;
+            vsync_q2 <= vsync_q1;
+            vde_q2 <= vde_q1;
+            current_bar_q2 <= current_bar_q1;
+            scaled_product_q2 <= bar_read_value * SCREEN_HEIGHT;
+        end
+    end
+
+    always_comb begin
+        scaled_height_raw = scaled_product_q2 / DISPLAY_FULL_SCALE;
+        if (scaled_height_raw > SCREEN_HEIGHT)
+            scaled_height = SCREEN_HEIGHT;
+        else
+            scaled_height = scaled_height_raw[9:0];
+    end
+
+    // Output stage: make the pixel decision and emit aligned video controls.
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            hsync_out <= 1'b0;
+            vsync_out <= 1'b0;
+            vde_out <= 1'b0;
+            red <= 4'h0;
+            green <= 4'h0;
+            blue <= 4'h0;
+        end else begin
+            hsync_out <= hsync_q2;
+            vsync_out <= vsync_q2;
+            vde_out <= vde_q2;
+
+            if (vde_q2 && (scaled_height != 0) &&
+                (drawY_q2 >= SCREEN_HEIGHT - scaled_height)) begin
+                if (current_bar_q2[3:0] == 4'b0000) begin
+                    red <= 4'hF;
                     green <= 4'hF;
-                    blue  <= 4'h0;
+                    blue <= 4'h0;
                 end else begin
-                    // Regular bars - cyan
-                    red   <= 4'h0;
+                    red <= 4'h0;
                     green <= 4'hF;
-                    blue  <= 4'hF;
+                    blue <= 4'hF;
                 end
             end else begin
-                // Background - black
-                red   <= 4'h0;
+                red <= 4'h0;
                 green <= 4'h0;
-                blue  <= 4'h0;
+                blue <= 4'h0;
             end
-        end else begin
-            // Blanking - black
-            red   <= 4'h0;
-            green <= 4'h0;
-            blue  <= 4'h0;
         end
     end
 endmodule

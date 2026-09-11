@@ -16,11 +16,16 @@ module top (
     logic clk_125;
     logic clk_100;
     logic clk_locked;
+    logic rst_25;
+    logic rst_100;
+    logic [1:0] reset_pipe_25;
+    logic [1:0] reset_pipe_100;
     
     // VGA signals
     logic [9:0] drawX, drawY;
     logic vga_hs, vga_vs;
     logic vde;
+    logic hdmi_hs, hdmi_vs, hdmi_vde;
     logic [3:0] vga_r, vga_g, vga_b;
     
     // Display buffer interface
@@ -48,9 +53,6 @@ module top (
     logic [15:0] display_write_data;
     logic display_write_en;
     
-    // Configuration
-    logic [15:0] max_value = 16'hFFFF;
-    
     //========================================================================
     // CLOCK WIZARD
     //========================================================================
@@ -62,12 +64,30 @@ module top (
         .clk_100(clk_100),
         .locked(clk_locked)
     );
+
+    // Sample loss of clock lock synchronously in each generated clock domain.
+    // This keeps asynchronous controls away from downstream BRAM interfaces.
+    always_ff @(posedge clk_25) begin
+        if (!clk_locked)
+            reset_pipe_25 <= 2'b11;
+        else
+            reset_pipe_25 <= {reset_pipe_25[0], 1'b0};
+    end
+
+    always_ff @(posedge clk_100) begin
+        if (!clk_locked)
+            reset_pipe_100 <= 2'b11;
+        else
+            reset_pipe_100 <= {reset_pipe_100[0], 1'b0};
+    end
+
+    assign rst_25 = reset_pipe_25[1];
+    assign rst_100 = reset_pipe_100[1];
     
     //========================================================================
     // SAMPLE MEMORY - Loads from .mem file
     //========================================================================
     sample_memory sample_mem (
-        .clk(clk_100),
         .read_addr(sample_read_addr),
         .read_data(sample_read_data)
     );
@@ -77,7 +97,7 @@ module top (
     //========================================================================
     fft_controller fft_ctrl (
         .clk(clk_100),
-        .rst(~clk_locked),
+        .rst(rst_100),
         
         // Sample memory interface
         .sample_read_addr(sample_read_addr),
@@ -109,7 +129,7 @@ module top (
         .FFT_SIZE(256)
     ) fft_core (
         .clk(clk_100),
-        .rst(~clk_locked),
+        .rst(rst_100),
         
         .start(fft_start),
         .load_enable(fft_load_enable),
@@ -130,8 +150,6 @@ module top (
     //========================================================================
     display_buffer disp_buf (
         .clk(clk_25),
-        .rst(~clk_locked),
-        
         .read_addr(display_read_addr),
         .read_data(display_read_data),
         
@@ -146,7 +164,7 @@ module top (
     //========================================================================
     vga_controller vga_ctrl (
         .pixel_clk(clk_25),
-        .reset(~clk_locked),
+        .reset(rst_25),
         .hs(vga_hs),
         .vs(vga_vs),
         .active_nblank(vde),
@@ -160,15 +178,19 @@ module top (
     //========================================================================
     bar_graph_color_mapper graph_mapper (
         .clk(clk_25),
+        .reset(rst_25),
         .drawX(drawX),
         .drawY(drawY),
-        .vde(vde),
+        .hsync_in(vga_hs),
+        .vsync_in(vga_vs),
+        .vde_in(vde),
         
         .bar_read_addr(display_read_addr),
         .bar_read_value(display_read_data),
         
-        .max_value(max_value),
-        
+        .hsync_out(hdmi_hs),
+        .vsync_out(hdmi_vs),
+        .vde_out(hdmi_vde),
         .red(vga_r),
         .green(vga_g),
         .blue(vga_b)
@@ -180,15 +202,18 @@ module top (
     hdmi_tx_0 hdmi_tx (
         .pix_clk(clk_25),
         .pix_clkx5(clk_125),
-        .pix_clk_locked(clk_locked),
-        .rst(~clk_locked),
+        // rst_25 already remains asserted until the clock generator locks.
+        // Keep the IP's redundant lock input high to avoid OR-gating an
+        // asynchronous reset inside the transmitter.
+        .pix_clk_locked(1'b1),
+        .rst(rst_25),
         
         .red(vga_r),
         .green(vga_g),
         .blue(vga_b),
-        .hsync(vga_hs),
-        .vsync(vga_vs),
-        .vde(vde),
+        .hsync(hdmi_hs),
+        .vsync(hdmi_vs),
+        .vde(hdmi_vde),
         
         .aux0_din(4'b0),
         .aux1_din(4'b0),
@@ -208,7 +233,6 @@ endmodule
 // SAMPLE MEMORY - ROM initialized from .mem file
 //============================================================================
 module sample_memory (
-    input logic clk,
     input logic [7:0] read_addr,
     output logic signed [15:0] read_data
 );
@@ -225,10 +249,10 @@ module sample_memory (
         $readmemh("samples.mem", samples); 
     end
     
-    always_ff @(posedge clk) begin
-        // Apply bit-reversal to the read address
-        read_data <= samples[bit_reverse(read_addr)];
-    end
+    // The input is bit-reversed for radix-2 decimation-in-time processing.
+    // An asynchronous read keeps the ROM address aligned with the registered
+    // FFT load interface.
+    always_comb read_data = samples[bit_reverse(read_addr)];
 
 endmodule
 
@@ -278,11 +302,12 @@ module fft_controller (
     logic [8:0] read_count;
     logic [15:0] pause_count;
     
-    // Magnitude calculation signals
-    logic signed [15:0] abs_re, abs_im;
+    // Two-stage magnitude pipeline: signed absolute values, then alpha-max
+    // plus beta-min approximation.
+    logic [15:0] abs_re_q, abs_im_q;
     logic [15:0] max_val, min_val;
     logic [15:0] beta_min;
-    logic [16:0] magnitude;
+    logic [15:0] magnitude_q;
     
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -295,7 +320,11 @@ module fft_controller (
             display_write_en <= 0;
             sample_read_addr <= 0;
             fft_load_addr <= 0;
+            fft_load_data_re <= 0;
+            fft_load_data_im <= 0;
             fft_read_addr <= 0;
+            display_write_addr <= 0;
+            display_write_data <= 0;
         end else begin
             case (state)
                 IDLE: begin
@@ -316,7 +345,6 @@ module fft_controller (
                     
                     if (load_count == 255) begin
                         state <= LOAD_DELAY;
-                        fft_load_enable <= 0;
                     end else begin
                         load_count <= load_count + 1;
                     end
@@ -329,8 +357,10 @@ module fft_controller (
                 end
                 
                 START_FFT: begin
-                    fft_start <= 1;
-                    state <= WAIT_FFT;
+                    if (!fft_busy) begin
+                        fft_start <= 1;
+                        state <= WAIT_FFT;
+                    end
                 end
                 
                 WAIT_FFT: begin
@@ -346,10 +376,12 @@ module fft_controller (
                     // Read FFT results and calculate magnitude
                     fft_read_addr <= read_count;
                     
-                    if (read_count >= 2) begin
-                        // Pipeline: results from 2 cycles ago are now valid
-                        display_write_addr <= read_count - 2;
-                        display_write_data <= magnitude[15:0];
+                    if (read_count >= 4) begin
+                        // Registered address, BRAM read, absolute value, and
+                        // magnitude stages make results from four cycles ago
+                        // valid here.
+                        display_write_addr <= read_count - 4;
+                        display_write_data <= magnitude_q;
                         display_write_en <= 1;
                     end else begin
                         display_write_en <= 0;
@@ -364,15 +396,25 @@ module fft_controller (
                 end
                 
                 READ_DELAY: begin
-                    // Finish writing last 2 values
+                    // Flush the final four values from the result pipeline.
                     if (read_count == 256) begin
-                        display_write_addr <= 254;
-                        display_write_data <= magnitude[15:0];
+                        display_write_addr <= 252;
+                        display_write_data <= magnitude_q;
                         display_write_en <= 1;
                         read_count <= 257;
                     end else if (read_count == 257) begin
+                        display_write_addr <= 253;
+                        display_write_data <= magnitude_q;
+                        display_write_en <= 1;
+                        read_count <= 258;
+                    end else if (read_count == 258) begin
+                        display_write_addr <= 254;
+                        display_write_data <= magnitude_q;
+                        display_write_en <= 1;
+                        read_count <= 259;
+                    end else if (read_count == 259) begin
                         display_write_addr <= 255;
-                        display_write_data <= magnitude[15:0];
+                        display_write_data <= magnitude_q;
                         display_write_en <= 1;
                         read_count <= 0;
                         pause_count <= 0;
@@ -389,6 +431,13 @@ module fft_controller (
                         pause_count <= pause_count + 1;
                     end
                 end
+
+                default: begin
+                    state <= IDLE;
+                    fft_start <= 1'b0;
+                    fft_load_enable <= 1'b0;
+                    display_write_en <= 1'b0;
+                end
             endcase
         end
     end
@@ -398,25 +447,34 @@ module fft_controller (
     // Alpha = 1.0, Beta = 0.375 (3/8)
     //========================================================================
     
-    // Absolute values
-    always_comb begin
-        abs_re = (fft_read_data_re < 0) ? -fft_read_data_re : fft_read_data_re;
-        abs_im = (fft_read_data_im < 0) ? -fft_read_data_im : fft_read_data_im;
-        
-        // Max / Min
-        if (abs_re >= abs_im) begin
-            max_val = abs_re;
-            min_val = abs_im;
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            abs_re_q <= 16'd0;
+            abs_im_q <= 16'd0;
+            magnitude_q <= 16'd0;
         end else begin
-            max_val = abs_im;
-            min_val = abs_re;
+            abs_re_q <= fft_read_data_re[15]
+                ? (~$unsigned(fft_read_data_re) + 16'd1)
+                : $unsigned(fft_read_data_re);
+            abs_im_q <= fft_read_data_im[15]
+                ? (~$unsigned(fft_read_data_im) + 16'd1)
+                : $unsigned(fft_read_data_im);
+            magnitude_q <= max_val + beta_min;
+        end
+    end
+
+    always_comb begin
+        if (abs_re_q >= abs_im_q) begin
+            max_val = abs_re_q;
+            min_val = abs_im_q;
+        end else begin
+            max_val = abs_im_q;
+            min_val = abs_re_q;
         end
         
         // Beta * min is 3/8 * min = min/4 + min/8.
         beta_min = (min_val >> 2) + (min_val >> 3);
         
-        // Magnitude is approximated as max + beta*min.
-        magnitude = max_val + beta_min;
     end
 
 endmodule
@@ -427,7 +485,6 @@ endmodule
 //============================================================================
 module display_buffer (
     input logic clk,
-    input logic rst,
     input logic [7:0] read_addr,
     output logic [15:0] read_data,
     
@@ -438,6 +495,11 @@ module display_buffer (
 );
 
     (* ram_style = "block" *) logic [15:0] memory [0:255];
+
+    initial begin
+        for (int i = 0; i < 256; i++)
+            memory[i] = 16'd0;
+    end
     
     always_ff @(posedge write_clk) begin
         if (write_en) begin

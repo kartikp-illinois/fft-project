@@ -17,3 +17,6 @@
 # Python verification artifacts
 __pycache__/
 *.py[cod]
+
+# Reproducible implementation output
+build/

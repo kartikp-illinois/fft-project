@@ -1,8 +1,7 @@
 `timescale 1ns / 1ps
 
-// Sequences an in-place radix-2 FFT using an address/read cycle, a memory
-// settling cycle, and a write cycle per butterfly. The settling cycle covers
-// the registered output stage in the configured twiddle ROM.
+// Sequences an in-place radix-2 FFT using address/read, memory settling,
+// arithmetic pipeline, and write cycles for each butterfly.
 module fft_control #(
     parameter FFT_SIZE = 256,
     parameter ADDR_WIDTH = $clog2(FFT_SIZE),
@@ -25,6 +24,7 @@ module fft_control #(
         IDLE,
         READ_BUTTERFLY,
         WAIT_MEMORY,
+        PIPELINE_BUTTERFLY,
         WRITE_BUTTERFLY,
         FINISH
     } state_t;
@@ -51,6 +51,9 @@ module fft_control #(
                     state <= WAIT_MEMORY;
 
                 WAIT_MEMORY:
+                    state <= PIPELINE_BUTTERFLY;
+
+                PIPELINE_BUTTERFLY:
                     state <= WRITE_BUTTERFLY;
 
                 WRITE_BUTTERFLY: begin
@@ -85,6 +88,7 @@ module fft_control #(
         done = (state == FINISH);
         busy = (state == READ_BUTTERFLY) ||
                (state == WAIT_MEMORY) ||
+               (state == PIPELINE_BUTTERFLY) ||
                (state == WRITE_BUTTERFLY);
     end
 

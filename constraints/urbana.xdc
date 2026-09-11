@@ -18,6 +18,10 @@ set_property -dict {PACKAGE_PIN U17 IOSTANDARD TMDS_33} [get_ports {hdmi_tmds_da
 set_property -dict {PACKAGE_PIN R16 IOSTANDARD TMDS_33} [get_ports {hdmi_tmds_data_p[1]}]
 set_property -dict {PACKAGE_PIN R14 IOSTANDARD TMDS_33} [get_ports {hdmi_tmds_data_p[2]}]
 
+# The HDMI transmitter contains the serializer and clock-forwarding logic.
+# There is no external parallel setup/hold relationship at these TMDS pins.
+set_false_path -to [get_ports {hdmi_tmds_clk_p hdmi_tmds_clk_n hdmi_tmds_data_p[*] hdmi_tmds_data_n[*]}]
+
 # Configuration voltage for Bank 0
 set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]

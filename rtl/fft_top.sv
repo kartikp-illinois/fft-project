@@ -130,6 +130,8 @@ module fft_top #(
     butterfly #(
         .WIDTH(WIDTH)
     ) butterfly_unit (
+        .clk(clk),
+        .rst(rst),
         .x0_re(mem_dout_a_re),
         .x0_im(mem_dout_a_im),
         .x1_re(mem_dout_b_re),

@@ -12,24 +12,17 @@ module fft_address_gen #(
     output logic [ADDR_WIDTH-1:0] tw_addr
 );
 
-    logic [ADDR_WIDTH:0] span;
-    logic [ADDR_WIDTH:0] group;
-    logic [ADDR_WIDTH:0] offset;
-    logic [ADDR_WIDTH:0] addr_x0_wide;
-    logic [ADDR_WIDTH:0] addr_x1_wide;
-    logic [ADDR_WIDTH:0] tw_addr_wide;
+    logic [ADDR_WIDTH-1:0] span;
+    logic [ADDR_WIDTH-1:0] group;
+    logic [ADDR_WIDTH-1:0] offset;
 
     always_comb begin
         span = ({{ADDR_WIDTH{1'b0}}, 1'b1} << stage);
         group = butterfly_idx >> stage;
         offset = butterfly_idx & (span - 1'b1);
-        addr_x0_wide = (group << (stage + 1'b1)) + offset;
-        addr_x1_wide = addr_x0_wide + span;
-        tw_addr_wide = offset << ((ADDR_WIDTH - 1) - stage);
-
-        addr_x0 = addr_x0_wide[ADDR_WIDTH-1:0];
-        addr_x1 = addr_x1_wide[ADDR_WIDTH-1:0];
-        tw_addr = tw_addr_wide[ADDR_WIDTH-1:0];
+        addr_x0 = (group << (stage + 1'b1)) + offset;
+        addr_x1 = addr_x0 + span;
+        tw_addr = offset << ((ADDR_WIDTH - 1) - stage);
     end
 
 endmodule
