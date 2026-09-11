@@ -1,8 +1,7 @@
 `timescale 1ns / 1ps
 
-// Diagnostic smoke test for the 256-point FFT core. The transform is known to
-// retain numerical artifacts, so this test reports the observed peaks without
-// claiming golden-model equivalence.
+// Self-checking regression for the 256-point FFT core. Each deterministic
+// input vector and every complex output bin are exported for host-side review.
 module fft_core_tb;
 
     localparam WIDTH = 16;
@@ -14,6 +13,7 @@ module fft_core_tb;
     logic signed [WIDTH-1:0] load_data_re, load_data_im;
     logic signed [WIDTH-1:0] read_data_re, read_data_im;
     integer csv_file;
+    integer input_csv_file;
 
     fft_top #(
         .WIDTH(WIDTH),
@@ -101,6 +101,8 @@ module fft_core_tb;
                     end
                     default: load_data_re = 0;
                 endcase
+                $fwrite(input_csv_file, "%s,%0d,%0d,%0d\n",
+                        name, i, $signed(load_data_re), $signed(load_data_im));
                 @(posedge clk);
             end
             load_enable = 0;
@@ -182,7 +184,11 @@ module fft_core_tb;
         csv_file = $fopen("fft_bins.csv", "w");
         if (csv_file == 0)
             $fatal(1, "could not create fft_bins.csv");
+        input_csv_file = $fopen("fft_inputs.csv", "w");
+        if (input_csv_file == 0)
+            $fatal(1, "could not create fft_inputs.csv");
         $fwrite(csv_file, "case_name,bin,real,imag,magnitude\n");
+        $fwrite(input_csv_file, "case_name,sample,real,imag\n");
 
         run_case("DC input (0.5)", 0, 0);
         run_case("unit impulse", 1, 0);
@@ -192,6 +198,7 @@ module fft_core_tb;
         run_case("full-scale Nyquist input", 5, 128);
         run_case("deterministic complex noise", 6, 0);
         $fclose(csv_file);
+        $fclose(input_csv_file);
         $display("\nPASS: all FFT regression cases completed.");
         $finish;
     end

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Render selected verified FFT spectra exported by fft_core_tb."""
+"""Plot the verified FFT stimulus in time and its RTL spectrum in frequency.
+
+The core testbench emits both CSV files.  Keeping the plotting step tied to
+those files makes the figure a direct record of the simulation rather than a
+separately regenerated example waveform.
+"""
 
 from __future__ import annotations
 
@@ -15,132 +20,129 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INPUT = (
-    PROJECT_ROOT / "FFT_Project.sim" / "sim_1" / "behav" / "xsim" / "fft_bins.csv"
-)
-DEFAULT_OUTPUT = PROJECT_ROOT / "assets" / "fft-diagnostic.png"
+SIM_DIR = PROJECT_ROOT / "FFT_Project.sim" / "sim_1" / "behav" / "xsim"
+DEFAULT_INPUTS = SIM_DIR / "fft_inputs.csv"
+DEFAULT_OUTPUTS = SIM_DIR / "fft_bins.csv"
+DEFAULT_FIGURE = PROJECT_ROOT / "assets" / "fft-diagnostic.png"
+N = 256
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Plot verified FFT output exported by the XSim testbench."
-    )
-    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    return parser.parse_args()
+def load_rows(path: Path, index_field: str, value_fields: tuple[str, ...]):
+    rows: dict[str, list[dict[str, int]]] = defaultdict(list)
+    try:
+        with path.open(newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            required = {"case_name", index_field, *value_fields}
+            if not reader.fieldnames or not required.issubset(reader.fieldnames):
+                raise ValueError(
+                    f"{path} must contain columns {', '.join(sorted(required))}"
+                )
+            for row in reader:
+                rows[row["case_name"]].append(
+                    {field: int(row[field]) for field in (index_field, *value_fields)}
+                )
+    except FileNotFoundError as exc:
+        raise SystemExit(
+            f"Missing {path}. Run scripts/run_verify.ps1 before plotting."
+        ) from exc
+    return rows
 
 
-def load_results(path: Path) -> dict[str, list[tuple[int, int]]]:
-    results: dict[str, list[tuple[int, int]]] = defaultdict(list)
-    with path.open(newline="", encoding="utf-8") as handle:
-        for row in csv.DictReader(handle):
-            results[row["case_name"]].append(
-                (int(row["bin"]), int(row["magnitude"]))
+def validate(rows: dict[str, list[dict[str, int]]], index_field: str) -> None:
+    expected = list(range(N))
+    for case_name, case_rows in rows.items():
+        indices = sorted(row[index_field] for row in case_rows)
+        if indices != expected:
+            raise SystemExit(
+                f"{case_name!r} has {len(indices)} {index_field} rows; expected 0..{N - 1}."
             )
-    return dict(results)
+
+
+def make_figure(inputs: dict, outputs: dict, destination: Path) -> None:
+    cases = [
+        (
+            "cosine at bin 5",
+            "Cosine input (time domain)",
+            "Cosine output (frequency domain)",
+            (5, 251),
+        ),
+        (
+            "two-tone real input",
+            "Two-tone input (time domain)",
+            "Two-tone output (frequency domain)",
+            (5, 37, 219, 251),
+        ),
+    ]
+    missing = [name for name, *_ in cases if name not in inputs or name not in outputs]
+    if missing:
+        raise SystemExit(f"Input/output CSVs are missing paired cases: {', '.join(missing)}")
+
+    plt.style.use("dark_background")
+    figure, axes = plt.subplots(2, 2, figsize=(12, 8))
+    figure.patch.set_facecolor("#0b1220")
+
+    for row_index, (case_name, input_title, output_title, expected_bins) in enumerate(cases):
+        input_rows = sorted(inputs[case_name], key=lambda row: row["sample"])
+        output_rows = sorted(outputs[case_name], key=lambda row: row["bin"])
+
+        input_axis, output_axis = axes[row_index]
+        samples = [row["sample"] for row in input_rows]
+        real_input = [row["real"] for row in input_rows]
+        input_axis.plot(samples, real_input, color="#22d3ee", linewidth=1.35)
+        input_axis.axhline(0, color="#64748b", linewidth=0.7, alpha=0.7)
+        input_axis.set_title(input_title, loc="left", fontsize=11, weight="bold")
+        input_axis.set_xlabel("Sample n")
+        input_axis.set_ylabel("Amplitude (Q1.15)")
+        input_axis.set_xlim(0, N - 1)
+        input_axis.grid(alpha=0.16)
+
+        bins = [row["bin"] for row in output_rows]
+        magnitudes = [row["magnitude"] for row in output_rows]
+        output_axis.bar(bins, magnitudes, width=1.0, color="#f59e0b", alpha=0.9)
+        for expected_bin in expected_bins:
+            output_axis.axvline(
+                expected_bin, color="#fb7185", linewidth=0.9, linestyle="--", alpha=0.8
+            )
+        output_axis.set_title(output_title, loc="left", fontsize=11, weight="bold")
+        output_axis.set_xlabel("FFT bin k")
+        output_axis.set_ylabel("Magnitude")
+        output_axis.set_xlim(0, N - 1)
+        output_axis.grid(alpha=0.16, axis="y")
+
+    figure.suptitle(
+        "256-point fixed-point FFT: verified time-domain input → frequency-domain output",
+        fontsize=15,
+        weight="bold",
+        color="#f8fafc",
+    )
+    figure.text(
+        0.5,
+        0.018,
+        "RTL stimulus and FFT bins exported by fft_core_tb | 1,792 complex bins match the bit-accurate reference",
+        ha="center",
+        color="#cbd5e1",
+        fontsize=9,
+    )
+
+    figure.tight_layout(rect=(0, 0.06, 1, 0.94))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(destination, dpi=170, facecolor=figure.get_facecolor())
+    plt.close(figure)
+    print(f"Wrote {destination}")
 
 
 def main() -> None:
-    args = parse_args()
-    results = load_results(args.input)
-    case_order = [
-        "DC input (0.5)",
-        "unit impulse",
-        "cosine at bin 5",
-        "two-tone real input",
-    ]
-    missing = [name for name in case_order if name not in results]
-    if missing:
-        raise SystemExit(f"missing simulation cases: {', '.join(missing)}")
-    for case_name, values in results.items():
-        bins = sorted(item[0] for item in values)
-        if bins != list(range(256)):
-            raise SystemExit(f"{case_name!r} does not contain bins 0 through 255")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--inputs", type=Path, default=DEFAULT_INPUTS)
+    parser.add_argument("--outputs", type=Path, default=DEFAULT_OUTPUTS)
+    parser.add_argument("--output", type=Path, default=DEFAULT_FIGURE)
+    args = parser.parse_args()
 
-    plt.rcParams.update(
-        {
-            "font.family": "DejaVu Sans",
-            "axes.titleweight": "bold",
-            "axes.edgecolor": "#94a3b8",
-            "axes.labelcolor": "#dbeafe",
-            "xtick.color": "#cbd5e1",
-            "ytick.color": "#cbd5e1",
-            "text.color": "#e2e8f0",
-        }
-    )
-    figure, axes = plt.subplots(2, 2, figsize=(12, 7.5), sharex=True)
-    figure.patch.set_facecolor("#07111f")
-    figure.suptitle(
-        "256-Point Fixed-Point FFT - Verified RTL Output",
-        fontsize=18,
-        fontweight="bold",
-        y=0.98,
-    )
-
-    subtitles = {
-        "DC input (0.5)": "DC input - energy at bin 0",
-        "unit impulse": "Unit impulse - flat spectrum",
-        "cosine at bin 5": "Cosine at bin 5 - symmetric peaks",
-        "two-tone real input": "Two-tone input - two symmetric pairs",
-    }
-    for axis, case_name in zip(axes.flat, case_order):
-        values = sorted(results[case_name])
-        bins = [item[0] for item in values]
-        magnitudes = [item[1] for item in values]
-        peak_index = max(range(len(values)), key=lambda index: magnitudes[index])
-        peak_bin = bins[peak_index]
-        peak_magnitude = magnitudes[peak_index]
-
-        axis.set_facecolor("#0b1728")
-        axis.bar(bins, magnitudes, width=1.0, color="#22d3ee", linewidth=0)
-        axis.scatter(
-            [peak_bin], [peak_magnitude], color="#fbbf24", s=32, zorder=3
-        )
-        axis.annotate(
-            f"peak: bin {peak_bin}, {peak_magnitude:,}",
-            xy=(peak_bin, peak_magnitude),
-            xytext=(10, -18),
-            textcoords="offset points",
-            color="#fbbf24",
-            fontsize=9,
-            ha="left" if peak_bin < 210 else "right",
-        )
-        if case_name == "cosine at bin 5":
-            axis.axvline(5, color="#a78bfa", linewidth=1.2, linestyle="--")
-            axis.axvline(251, color="#a78bfa", linewidth=1.2, linestyle="--")
-            axis.text(
-                8,
-                axis.get_ylim()[1] * 0.78,
-                "bins 5 and 251",
-                color="#c4b5fd",
-                fontsize=9,
-            )
-
-        axis.set_title(subtitles[case_name], loc="left", fontsize=12, pad=8)
-        axis.set_ylabel("Magnitude")
-        axis.grid(axis="y", color="#334155", alpha=0.65, linewidth=0.6)
-        axis.set_axisbelow(True)
-        axis.margins(x=0)
-
-    for axis in axes[-1]:
-        axis.set_xlabel("FFT bin")
-    for axis in axes.flat:
-        axis.set_xlim(-1, 256)
-        axis.set_xticks(range(0, 257, 32))
-    figure.text(
-        0.5,
-        0.012,
-        "XSim RTL output | 1,792 complex bins match the bit-accurate reference exactly",
-        ha="center",
-        color="#94a3b8",
-        fontsize=9,
-    )
-    figure.tight_layout(rect=(0.035, 0.05, 0.99, 0.94), h_pad=1.5, w_pad=1.2)
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(args.output, dpi=160, bbox_inches="tight", facecolor=figure.get_facecolor())
-    plt.close(figure)
-    print(f"wrote {args.output}")
+    inputs = load_rows(args.inputs, "sample", ("real", "imag"))
+    outputs = load_rows(args.outputs, "bin", ("real", "imag", "magnitude"))
+    validate(inputs, "sample")
+    validate(outputs, "bin")
+    make_figure(inputs, outputs, args.output)
 
 
 if __name__ == "__main__":
