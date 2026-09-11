@@ -13,6 +13,7 @@ module fft_core_tb;
     logic [ADDR_WIDTH-1:0] load_addr, read_addr;
     logic signed [WIDTH-1:0] load_data_re, load_data_im;
     logic signed [WIDTH-1:0] read_data_re, read_data_im;
+    integer csv_file;
 
     fft_top #(
         .WIDTH(WIDTH),
@@ -103,6 +104,9 @@ module fft_core_tb;
                 read_addr = bit_reverse(i);
                 repeat (2) @(posedge clk);
                 bin_magnitude = magnitude(read_data_re, read_data_im);
+                $fwrite(csv_file, "%s,%0d,%0d,%0d,%0d\n",
+                        name, i, $signed(read_data_re),
+                        $signed(read_data_im), bin_magnitude);
 
                 if (bin_magnitude > max_magnitude) begin
                     max_magnitude = bin_magnitude;
@@ -129,9 +133,15 @@ module fft_core_tb;
     endtask
 
     initial begin
+        csv_file = $fopen("fft_bins.csv", "w");
+        if (csv_file == 0)
+            $fatal(1, "could not create fft_bins.csv");
+        $fwrite(csv_file, "case_name,bin,real,imag,magnitude\n");
+
         run_case("DC input (0.5)", 0, 0);
         run_case("unit impulse", 1, 0);
         run_case("cosine at bin 5", 2, 5);
+        $fclose(csv_file);
         $display("\nFFT diagnostic complete.");
         $finish;
     end

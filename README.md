@@ -4,11 +4,15 @@ This project is a hardware spectrum visualizer built for the RealDigital Urbana 
 
 The design was created as a final project for ECE 385: Digital Systems Laboratory at the University of Illinois Urbana-Champaign by Kartik Pidaparthi and Kyle Stadler.
 
+![Behavioral FFT diagnostic showing DC, impulse, and bin-5 cosine output](assets/fft-diagnostic.png)
+
+*Behavioral XSim output from the checked-in testbench. The figure is intentionally uncorrected and shows both the working transform flow and the numerical artifacts discussed below.*
+
 ## Project status
 
 This repository captures a functional educational prototype, including the FPGA top level, FFT datapath, display pipeline, IP configurations, constraints, and a behavioral diagnostic testbench.
 
-The control path completes all eight FFT stages and the hardware demo produced a recognizable tone at bin 5 on the HDMI bar graph. The remaining limitation is numerical correctness: behavioral simulation still shows spurious energy and inconsistent bin amplitudes for simple DC, impulse, and single-tone inputs. The display is therefore useful as a proof of concept, but the FFT core should not be treated as a production-quality signal-processing block.
+The control path completes all eight FFT stages and the hardware demo produced a recognizable tone at bin 5 on the HDMI bar graph. Kyle also demonstrated a live low-to-high frequency sweep; the dominant bar moved across the spectrum in the expected direction as the generated sine-wave frequency increased. The remaining limitation is numerical correctness: behavioral simulation still shows spurious energy and inconsistent bin amplitudes for simple DC, impulse, and single-tone inputs. The display is therefore useful as a proof of concept, but the FFT core should not be treated as a production-quality signal-processing block.
 
 The latest debugging pass corrected two important timing problems: the direct butterfly input now travels through the same number of registers as the complex multiply, and the write addresses and valid signal are delayed to match BRAM, twiddle-ROM, and butterfly latency. That made the 256-point calculation complete consistently. The remaining artifacts most likely sit at the boundary between overlapping memory reads/writes, fixed-point truncation, and output ordering.
 
@@ -24,7 +28,7 @@ I, Kartik Pidaparthi, owned the FFT compute path and most of its verification. M
 - writing and iterating on the behavioral testbenches for DC, impulse, and single-tone inputs; and
 - debugging pipeline alignment, write-back timing, and bit-reversed input/readout behavior.
 
-Kyle Stadler owned most of the board-facing integration: the sample ROM and frame controller, magnitude-to-bar conversion, display buffer, VGA timing, HDMI output path, pin constraints, and hardware display tuning. We jointly debugged the integrated system and used the screen output to identify the remaining spectral artifacts.
+Kyle Stadler owned most of the board-facing integration: the sample ROM and frame controller, magnitude-to-bar conversion, display buffer, VGA timing, HDMI output path, pin constraints, and hardware display tuning. He added push-button control of a real-time sine-wave source so live sample data could pass through the FFT and appear on the display. He also prepared the hardware demo that swept the tone from low to high frequency and showed the spectral peak moving as expected. We jointly debugged the integrated system and used the screen output to identify the remaining spectral artifacts.
 
 ## How it works
 
@@ -46,14 +50,6 @@ sample ROM -> bit-reversed load -> in-place FFT -> magnitude estimate
 HDMI output <- VGA timing <- bar renderer <- display buffer
 ```
 
-## What we learned
-
-- Pipeline bookkeeping is part of the algorithm. Data, twiddles, valid bits, and destination addresses must arrive on the same cycle.
-- In-place transforms make memory scheduling critical. Reading the next butterfly while writing the previous result can silently corrupt a stage if the cadence is wrong.
-- Bit reversal is an interface decision. Performing it on input, output, or both changes whether the visible spectrum appears in natural order.
-- Fixed-point FFTs need an explicit overflow policy. Per-stage scaling protects the 16-bit storage format, but truncation and rounding affect the noise floor.
-- A visually recognizable spectrum is useful integration evidence, but it is not a substitute for comparison against a numerical golden model.
-
 ## Repository layout
 
 | Path | Contents |
@@ -64,7 +60,8 @@ HDMI output <- VGA timing <- bar renderer <- display buffer
 | `constraints/` | Minimal Urbana clock, reset, and HDMI pin constraints |
 | `ip/` | Vivado configuration files for the twiddle ROM, clock wizard, and HDMI transmitter |
 | `third_party/` | Bundled RealDigital HDMI transmitter IP (BSD 3-Clause) |
-| `scripts/` | Batch simulation helper |
+| `scripts/` | Batch simulation, synthesis, and result-plotting helpers |
+| `assets/` | Generated diagnostic figure used by this README |
 | `FFT_Project.xpr` | Vivado 2022.2 project file |
 
 Vivado caches, generated IP output products, run directories, simulation databases, and checkpoints are intentionally excluded. They can all be regenerated from the files above.
@@ -75,6 +72,7 @@ Requirements:
 
 - AMD/Xilinx Vivado 2022.2
 - RealDigital Urbana board, or another Spartan-7 target with updated constraints
+- Python 3 with Matplotlib, only to regenerate the diagnostic figure
 
 To inspect or build the hardware design, open `FFT_Project.xpr` in Vivado. If prompted, generate output products for the three IP blocks before synthesis. The synthesis top is `top` and the target part is `xc7s50csga324-1`.
 
@@ -84,7 +82,13 @@ Run the behavioral diagnostic from the project directory with:
 vivado -mode batch -source scripts/run_sim.tcl
 ```
 
-The testbench exercises DC, impulse, and bin-5 cosine inputs. It currently serves as a reproducible diagnostic for the known numerical artifacts rather than a passing golden-model regression.
+The testbench exercises DC, impulse, and bin-5 cosine inputs. It currently serves as a reproducible diagnostic for the known numerical artifacts rather than a passing golden-model regression. It also writes every complex output bin and its approximate magnitude to `FFT_Project.sim/sim_1/behav/xsim/fft_bins.csv`.
+
+Regenerate the README figure from that CSV with:
+
+```powershell
+python scripts/plot_fft_results.py
+```
 
 Run a clean synthesis check with:
 
