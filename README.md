@@ -4,9 +4,9 @@ A hardware spectrum analyzer for the RealDigital Urbana FPGA board. The design l
 
 This was developed by Kartik Pidaparthi and Kyle Stadler as a final project for ECE 385: Digital Systems Laboratory at the University of Illinois Urbana-Champaign. This standalone repository is the cleaned, reproducible portfolio release.
 
-![Verified XSim FFT output for DC, impulse, single-tone, and two-tone inputs](assets/fft-diagnostic.png)
+![Verified RTL time-domain inputs and frequency-domain FFT outputs](assets/fft-diagnostic.png)
 
-*Selected outputs from the self-checking RTL regression. Across all seven test cases, all 1,792 complex output bins matched the bit-accurate Python model exactly.*
+*The paired panels use the exact samples and bins exported by the self-checking RTL regression: time-domain stimulus on the left, frequency-domain magnitude on the right. Across all seven test cases, all 1,792 complex output bins matched the bit-accurate Python model exactly.*
 
 ## Project status
 
@@ -47,11 +47,22 @@ The standalone portfolio build uses `data/samples.mem` as a deterministic input 
 
 ## How it works
 
-```text
-sample ROM -> bit-reversed load -> 256-point in-place FFT -> magnitude estimate
-                                                                |
-HDMI output <- TMDS serializer <- bar renderer <- display buffer
+```mermaid
+flowchart LR
+    source["samples.mem<br/>256 signed Q1.15 samples"] --> loader["Bit-reversed loader<br/>100 MHz FFT clock"]
+    loader --> ram["Dual-port complex FFT RAM"]
+    ram --> control["FFT controller<br/>8 stages × 128 butterflies"]
+    control --> butterfly["Pipelined complex butterfly<br/>DSP48 products + stage scaling"]
+    twiddle["Twiddle ROM<br/>Q1.15"] --> butterfly
+    butterfly --> ram
+    ram --> bins["Natural-order complex bins"]
+    bins --> magnitude["Magnitude estimate<br/>max + 3/8 min"]
+    magnitude --> display["Dual-clock display buffer"]
+    display --> mapper["640 × 480 bar mapper<br/>25 MHz pixel clock"]
+    mapper --> hdmi["HDMI TMDS serializer<br/>125 MHz clock"]
 ```
+
+The diagram follows the data path from deterministic samples through the FFT and into the video pipeline. The FFT controller owns the RAM schedule; the butterfly is reused for each stage, while the twiddle ROM supplies the stage coefficients. The display side crosses into its own clock domain before mapping the 256 magnitudes to HDMI bars.
 
 The core is a decimation-in-time, radix-2 FFT. Input samples are loaded in bit-reversed order, which leaves the completed spectrum in natural bin order. One pipelined butterfly is time-multiplexed across 128 operations per stage for eight stages.
 
@@ -134,6 +145,8 @@ After running the exact FFT regression:
 ```powershell
 python scripts/plot_fft_results.py
 ```
+
+The plotter reads `fft_inputs.csv` and `fft_bins.csv` from the XSim run directory, so the figure always reflects the same RTL stimulus and output bins that the reference checker just validated. Generate the figure before running the board/display simulation, because Vivado resets the shared simulation directory when it launches a different testbench.
 
 To test another deterministic signal, replace `data/samples.mem` with 256 signed 16-bit hexadecimal samples, one per line, then rerun simulation or implementation.
 
