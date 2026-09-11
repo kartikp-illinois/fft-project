@@ -1,130 +1,91 @@
 `timescale 1ns / 1ps
 
-// Sequences the eight stages of a 256-point in-place radix-2 FFT.
+// Sequences an in-place radix-2 FFT using an address/read cycle, a memory
+// settling cycle, and a write cycle per butterfly. The settling cycle covers
+// the registered output stage in the configured twiddle ROM.
 module fft_control #(
-    parameter FFT_SIZE = 256
+    parameter FFT_SIZE = 256,
+    parameter ADDR_WIDTH = $clog2(FFT_SIZE),
+    parameter STAGES = $clog2(FFT_SIZE)
 )(
     input  logic clk,
     input  logic rst,
     input  logic start,
-    output logic [2:0] stage,
-    output logic [$clog2(FFT_SIZE):0] butterfly_idx,
-    output logic compute_enable,
-    output logic we_mem,
+    output logic [$clog2(STAGES)-1:0] stage,
+    output logic [ADDR_WIDTH-1:0] butterfly_idx,
+    output logic read_enable,
+    output logic write_enable,
     output logic done,
     output logic busy
 );
 
+    localparam BUTTERFLIES_PER_STAGE = FFT_SIZE / 2;
+
     typedef enum logic [2:0] {
         IDLE,
-        INIT_STAGE,
-        COMPUTE,
-        DRAIN_PIPELINE,
-        NEXT_STAGE,
+        READ_BUTTERFLY,
+        WAIT_MEMORY,
+        WRITE_BUTTERFLY,
         FINISH
     } state_t;
 
-    state_t state, next_state;
-
-    logic [2:0] current_stage;
-    logic [$clog2(FFT_SIZE):0] bf_count;
-    logic [$clog2(FFT_SIZE):0] butterflies_per_stage = FFT_SIZE >> 1;
-    logic [5:0] drain_count;
-
-    // Includes BRAM, twiddle ROM, butterfly, and write-address latency.
-    localparam PIPELINE_DEPTH = 32;
+    state_t state;
+    logic [$clog2(STAGES)-1:0] current_stage;
+    logic [ADDR_WIDTH-1:0] current_butterfly;
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            state         <= IDLE;
-            current_stage <= 0;
-            bf_count      <= 0;
-            butterfly_idx <= 0;
-            drain_count   <= 0;
-            stage         <= 0;
+            state <= IDLE;
+            current_stage <= '0;
+            current_butterfly <= '0;
         end else begin
-            state <= next_state;
-
             case (state)
                 IDLE: begin
-                    current_stage <= 0;
-                    bf_count      <= 0;
-                    butterfly_idx <= 0;
-                    drain_count   <= 0;
+                    current_stage <= '0;
+                    current_butterfly <= '0;
+                    if (start)
+                        state <= READ_BUTTERFLY;
                 end
 
-                INIT_STAGE: begin
-                    bf_count      <= 0;
-                    butterfly_idx <= 0;
-                    stage         <= current_stage;
-                end
+                READ_BUTTERFLY:
+                    state <= WAIT_MEMORY;
 
-                COMPUTE: begin
-                    if (bf_count < butterflies_per_stage) begin
-                        butterfly_idx <= bf_count;
-                        bf_count      <= bf_count + 1;
+                WAIT_MEMORY:
+                    state <= WRITE_BUTTERFLY;
+
+                WRITE_BUTTERFLY: begin
+                    if (current_butterfly == BUTTERFLIES_PER_STAGE - 1) begin
+                        current_butterfly <= '0;
+                        if (current_stage == STAGES - 1)
+                            state <= FINISH;
+                        else begin
+                            current_stage <= current_stage + 1'b1;
+                            state <= READ_BUTTERFLY;
+                        end
+                    end else begin
+                        current_butterfly <= current_butterfly + 1'b1;
+                        state <= READ_BUTTERFLY;
                     end
                 end
 
-                DRAIN_PIPELINE:
-                    drain_count <= drain_count + 1;
+                FINISH:
+                    state <= IDLE;
 
-                NEXT_STAGE: begin
-                    current_stage <= current_stage + 1;
-                    drain_count   <= 0;
-                end
-
-                default: ;
+                default:
+                    state <= IDLE;
             endcase
         end
     end
 
     always_comb begin
-        next_state     = state;
-        compute_enable = 0;
-        we_mem         = 0;
-        done           = 0;
-        busy           = 1;
-
-        case (state)
-            IDLE: begin
-                busy = 0;
-                if (start)
-                    next_state = INIT_STAGE;
-            end
-
-            INIT_STAGE:
-                next_state = COMPUTE;
-
-            COMPUTE: begin
-                compute_enable = (bf_count < butterflies_per_stage);
-                we_mem = 1;
-                if (bf_count >= butterflies_per_stage)
-                    next_state = DRAIN_PIPELINE;
-            end
-
-            DRAIN_PIPELINE: begin
-                we_mem = 1;
-                if (drain_count >= PIPELINE_DEPTH) begin
-                    if (current_stage >= 7)
-                        next_state = FINISH;
-                    else
-                        next_state = NEXT_STAGE;
-                end
-            end
-
-            NEXT_STAGE:
-                next_state = INIT_STAGE;
-
-            FINISH: begin
-                done = 1;
-                busy = 0;
-                next_state = IDLE;
-            end
-
-            default:
-                next_state = IDLE;
-        endcase
+        stage = current_stage;
+        butterfly_idx = current_butterfly;
+        read_enable = (state == READ_BUTTERFLY);
+        write_enable = (state == WRITE_BUTTERFLY);
+        done = (state == FINISH);
+        busy = (state == READ_BUTTERFLY) ||
+               (state == WAIT_MEMORY) ||
+               (state == WRITE_BUTTERFLY);
     end
 
 endmodule

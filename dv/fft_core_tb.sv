@@ -65,6 +65,7 @@ module fft_core_tb;
         integer peak_bin;
         integer expected_a;
         integer expected_b;
+        integer max_unexpected;
         real angle;
         begin
             $display("\n--- %s ---", name);
@@ -99,9 +100,12 @@ module fft_core_tb;
             peak_bin = 0;
             expected_a = 0;
             expected_b = 0;
+            max_unexpected = 0;
 
             for (i = 0; i < FFT_SIZE; i = i + 1) begin
-                read_addr = bit_reverse(i);
+                // The DIT core receives bit-reversed input and stores its
+                // final output in natural frequency-bin order.
+                read_addr = i;
                 repeat (2) @(posedge clk);
                 bin_magnitude = magnitude(read_data_re, read_data_im);
                 $fwrite(csv_file, "%s,%0d,%0d,%0d,%0d\n",
@@ -118,6 +122,13 @@ module fft_core_tb;
                     expected_a = bin_magnitude;
                 if ((tone_bin != 0) && (i == FFT_SIZE - tone_bin))
                     expected_b = bin_magnitude;
+                if ((input_kind == 0) && (i != 0) &&
+                    (bin_magnitude > max_unexpected))
+                    max_unexpected = bin_magnitude;
+                if ((input_kind == 2) && (i != tone_bin) &&
+                    (i != FFT_SIZE - tone_bin) &&
+                    (bin_magnitude > max_unexpected))
+                    max_unexpected = bin_magnitude;
             end
 
             $display("peak bin=%0d magnitude=%0d, range=[%0d, %0d]",
@@ -129,6 +140,24 @@ module fft_core_tb;
             else
                 $display("expected tone bins %0d/%0d magnitudes=%0d/%0d",
                          tone_bin, FFT_SIZE - tone_bin, expected_a, expected_b);
+
+            case (input_kind)
+                0: begin
+                    if ((peak_bin != 0) || (expected_a < 16370) ||
+                        (expected_a > 16384) || (max_unexpected != 0))
+                        $fatal(1, "DC spectrum check failed");
+                end
+                1: begin
+                    if ((min_magnitude != 127) || (max_magnitude != 127))
+                        $fatal(1, "impulse spectrum check failed");
+                end
+                2: begin
+                    if ((expected_a < 8180) || (expected_b < 8180) ||
+                        (max_unexpected > 8))
+                        $fatal(1, "single-tone spectrum check failed");
+                end
+                default: $fatal(1, "unknown test case");
+            endcase
         end
     endtask
 
@@ -142,7 +171,7 @@ module fft_core_tb;
         run_case("unit impulse", 1, 0);
         run_case("cosine at bin 5", 2, 5);
         $fclose(csv_file);
-        $display("\nFFT diagnostic complete.");
+        $display("\nPASS: all canonical FFT checks completed.");
         $finish;
     end
 
