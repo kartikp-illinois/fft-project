@@ -30,7 +30,7 @@ logic addr_valid;
 
 // Butterfly I/O
 logic signed [WIDTH-1:0] x0_re, x0_im, x1_re, x1_im;
-logic signed [WIDTH-1:0] y0_re, y0_im, y1_re, y1_im;
+logic signed [33:0] y0_re, y0_im, y1_re, y1_im;
 logic signed [WIDTH-1:0] tw_re, tw_im;
 logic bf_valid_in, bf_valid_out;
 
@@ -45,7 +45,7 @@ logic signed [WIDTH-1:0] mem_dout_b_re, mem_dout_b_im;
 // ========================================================================
 // FIXED: 6-STAGE PIPELINE WITH PROPER DECLARATIONS
 // ========================================================================
-localparam ADDR_PIPE_DEPTH = 9;  // 3 (read) + 6 (butterfly)
+localparam ADDR_PIPE_DEPTH = 7;  // 3 (read) + 6 (butterfly)
 
 logic [ADDR_WIDTH-1:0] wr_addr_y0_d [0:ADDR_PIPE_DEPTH-1];
 logic [ADDR_WIDTH-1:0] wr_addr_y1_d [0:ADDR_PIPE_DEPTH-1];
@@ -76,6 +76,7 @@ always_ff @(posedge clk) begin
     // We need 1 register here to make Twiddle Latency 3.
     tw_re_d <= tw_re;
     tw_im_d <= tw_im;
+    
 end
 
 
@@ -136,13 +137,13 @@ always_comb begin
             // WRITE PHASE: Write y0 to Port A, y1 to Port B
             mem_we_a = 1;
             mem_addr_a = wr_addr_y0_d[ADDR_PIPE_DEPTH-1];
-            mem_din_a_re = y0_re;
-            mem_din_a_im = y0_im;
+            mem_din_a_re = y0_re[16:1]; // Take bits 16 down to 1 (Divide by 2)
+            mem_din_a_im = y0_im[16:1];
             
             mem_we_b = 1;
             mem_addr_b = wr_addr_y1_d[ADDR_PIPE_DEPTH-1];
-            mem_din_b_re = y1_re;
-            mem_din_b_im = y1_im;
+            mem_din_b_re = y1_re[16:1];
+            mem_din_b_im = y1_im[16:1];
         end 
         // Else: READ PHASE (defaults hold: addr_x0/x1)
     end else begin

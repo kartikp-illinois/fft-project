@@ -132,7 +132,7 @@ task run_test(string name, int input_type, int freq_k);
     
     // Read and display all bins
     for (i = 0; i < FFT_SIZE; i++) begin
-        read_addr = i;
+        read_addr = bit_reverse(i);
         repeat(2) @(posedge clk);   // Wait for read latency
         
         mag_approx = magnitude_approx(read_data_re, read_data_im);
@@ -228,7 +228,7 @@ task run_test_compact(string name, int input_type, int freq_k);
     $display("\n=== FFT MAGNITUDE SPECTRUM (16 bins per row) ===");
     
     for (i = 0; i < FFT_SIZE; i++) begin
-        read_addr = i;
+        read_addr = bit_reverse(i);
         repeat(2) @(posedge clk);
         mag_approx = magnitude_approx(read_data_re, read_data_im);
         
