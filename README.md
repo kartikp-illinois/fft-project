@@ -1,103 +1,142 @@
 # 256-Point Fixed-Point FFT Spectrum Visualizer
 
-This project is a hardware spectrum visualizer built for the RealDigital Urbana FPGA board. It loads a 256-sample real-valued signal, computes an in-place radix-2 FFT in SystemVerilog, estimates the magnitude of each frequency bin, and renders the spectrum as a 640 x 480 bar graph over HDMI.
+A hardware spectrum analyzer for the RealDigital Urbana FPGA board. The design loads 256 signed samples, computes an in-place radix-2 FFT in SystemVerilog, estimates the magnitude of every frequency bin, and renders the spectrum as a 640 x 480 HDMI bar graph.
 
-The design was created as a final project for ECE 385: Digital Systems Laboratory at the University of Illinois Urbana-Champaign by Kartik Pidaparthi and Kyle Stadler.
+This was developed by Kartik Pidaparthi and Kyle Stadler as a final project for ECE 385: Digital Systems Laboratory at the University of Illinois Urbana-Champaign. This standalone repository is the cleaned, reproducible portfolio release.
 
-![Behavioral FFT diagnostic showing DC, impulse, and bin-5 cosine output](assets/fft-diagnostic.png)
+![Verified XSim FFT output for DC, impulse, single-tone, and two-tone inputs](assets/fft-diagnostic.png)
 
-*Behavioral XSim output from the checked-in testbench. The figure is intentionally uncorrected and shows both the working transform flow and the numerical artifacts discussed below.*
+*Selected outputs from the self-checking RTL regression. Across all seven test cases, all 1,792 complex output bins matched the bit-accurate Python model exactly.*
 
 ## Project status
 
-This repository captures a functional educational prototype, including the FPGA top level, FFT datapath, display pipeline, IP configurations, constraints, and a behavioral diagnostic testbench.
+The checked-in design is a verified educational FPGA release, not just an archived class demo. The FFT core, board controller, display mapping, implementation timing, and bitstream generation all have reproducible checks.
 
-The control path completes all eight FFT stages and the hardware demo produced a recognizable tone at bin 5 on the HDMI bar graph. Kyle also demonstrated a live low-to-high frequency sweep; the dominant bar moved across the spectrum in the expected direction as the generated sine-wave frequency increased. The remaining limitation is numerical correctness: behavioral simulation still shows spurious energy and inconsistent bin amplitudes for simple DC, impulse, and single-tone inputs. The display is therefore useful as a proof of concept, but the FFT core should not be treated as a production-quality signal-processing block.
+| Check | Result |
+| --- | --- |
+| Numerical FFT regression | 7 signal classes; 1,792 complex bins matched exactly |
+| Inputs covered | DC, impulse, real tone, complex tone, two-tone, full-scale Nyquist, deterministic complex noise |
+| Board pipeline | 2 consecutive transforms; all 512 loads and 512 display writes checked |
+| Signed edge cases | Correct magnitude handling for `-32768 + j0` and `-32768 - j32768` |
+| Display pipeline | Bin mapping, scaling, blanking, marker color, and video-control alignment checked |
+| Spartan-7 implementation | Fully routed; 0 routing errors; 0 methodology violations; bitstream generated |
+| Post-route timing | Worst setup slack `+1.017 ns`; worst hold slack `+0.108 ns` |
 
-The latest debugging pass corrected two important timing problems: the direct butterfly input now travels through the same number of registers as the complex multiply, and the write addresses and valid signal are delayed to match BRAM, twiddle-ROM, and butterfly latency. That made the 256-point calculation complete consistently. The remaining artifacts most likely sit at the boundary between overlapping memory reads/writes, fixed-point truncation, and output ordering.
+Vivado reports nine `DPIP-1` recommendations for optional additional DSP input registers. These are performance suggestions rather than correctness failures; the implemented design meets its 100 MHz and 25 MHz timing requirements with positive slack.
 
-The complete board-level design also synthesizes successfully in Vivado 2022.2 with zero errors and zero critical warnings.
+## Contributions
 
-## My contribution
+### Kartik Pidaparthi
 
-I, Kartik Pidaparthi, owned the FFT compute path and most of its verification. My work included:
+I owned the FFT compute path and its verification:
 
-- building the original 8-point radix-2 core and scaling it to 256 points;
-- implementing the pipelined complex butterfly, stage address generator, dual-port complex sample memory, and FFT control FSM;
-- integrating the Q1.15 twiddle-factor ROM and per-stage scaling;
-- writing and iterating on the behavioral testbenches for DC, impulse, and single-tone inputs; and
-- debugging pipeline alignment, write-back timing, and bit-reversed input/readout behavior.
+- designed the radix-2 FFT architecture and scaled the original 8-point core to 256 points;
+- implemented the complex Q1.15 butterfly, address generation, dual-port complex memory, and control FSM;
+- integrated the twiddle-factor ROM and per-stage overflow control;
+- debugged memory scheduling, fixed-point widths, output ordering, and pipeline alignment;
+- built the self-checking SystemVerilog regression and bit-accurate Python reference model; and
+- hardened the extracted portfolio design through board-pipeline tests and post-route timing signoff.
 
-Kyle Stadler owned most of the board-facing integration: the sample ROM and frame controller, magnitude-to-bar conversion, display buffer, VGA timing, HDMI output path, pin constraints, and hardware display tuning. He added push-button control of a real-time sine-wave source so live sample data could pass through the FFT and appear on the display. He also prepared the hardware demo that swept the tone from low to high frequency and showed the spectral peak moving as expected. We jointly debugged the integrated system and used the screen output to identify the remaining spectral artifacts.
+### Kyle Stadler
+
+Kyle led much of the original board-facing integration: sample delivery, frame control, magnitude-to-bar conversion, the display buffer, VGA timing, HDMI output, board constraints, and display tuning.
+
+For the live hardware demo, Kyle built push-button controls around a real-time sine-wave source. The buttons changed the generated signal while time-domain samples continuously passed through the FFT and produced a physical spectrum on the display. He also demonstrated a low-to-high frequency sweep; as the input frequency increased, the dominant output moved from the low bins toward the high bins as expected.
+
+The standalone portfolio build uses `data/samples.mem` as a deterministic input so anyone can reproduce the results without the original live control hardware. Kyle's button-driven source and sweep describe the integrated team demo rather than a separate input peripheral included in this repository.
 
 ## How it works
 
-The core uses a decimation-in-time, radix-2 FFT. Input samples are placed in bit-reversed order, allowing the final spectrum to be read in linear bin order. A single pipelined butterfly is time-multiplexed across 128 butterfly operations per stage for eight stages.
+```text
+sample ROM -> bit-reversed load -> 256-point in-place FFT -> magnitude estimate
+                                                                |
+HDMI output <- TMDS serializer <- bar renderer <- display buffer
+```
 
-Each sample component and twiddle factor is represented as a signed 16-bit value; twiddles use Q1.15 format. The butterfly keeps wider intermediate products, shifts the complex product back to Q1.15, and divides each write-back result by two. Scaling once per stage produces an overall factor of 1/256 and limits fixed-point overflow.
+The core is a decimation-in-time, radix-2 FFT. Input samples are loaded in bit-reversed order, which leaves the completed spectrum in natural bin order. One pipelined butterfly is time-multiplexed across 128 operations per stage for eight stages.
 
-After the transform, the board controller approximates complex magnitude with
+Samples and twiddle factors are signed 16-bit values; the twiddle table uses Q1.15. The butterfly keeps full-width intermediate products, converts the product back to Q1.15 with an arithmetic shift, and scales every stage by two. Eight scaled stages give an overall FFT factor of `1/256` while controlling overflow. Results are saturated to the signed 16-bit range.
+
+The board controller approximates complex magnitude as:
 
 ```text
 |X[k]| ~= max(|re|, |im|) + 3/8 * min(|re|, |im|)
 ```
 
-This multiplier-free approximation is inexpensive in hardware. The resulting 256 magnitudes are stored in a display buffer, mapped to vertical bars, and sent through a 25 MHz VGA timing pipeline and a 125 MHz TMDS serializer.
+The approximation uses shifts and addition around a pipelined datapath. The resulting 256 magnitudes cross into a dual-clock display buffer. The renderer maps all 640 active pixels exactly across bins 0 through 255, aligns video control signals with RAM latency, and sends the RGB stream through the HDMI TMDS transmitter.
 
-```text
-sample ROM -> bit-reversed load -> in-place FFT -> magnitude estimate
-                                                     |
-HDMI output <- VGA timing <- bar renderer <- display buffer
-```
+## Key engineering findings
+
+The original prototype could complete a transform and display a moving peak, but its simplest simulated inputs exposed incorrect bin data. Verification isolated four interacting causes:
+
+- FFT reads and write-backs competed for the same memory ports, allowing stale operands into later butterflies;
+- overextended operands created oversized multiplication results that were silently truncated;
+- the registered twiddle ROM and DSP products needed explicit controller pipeline states; and
+- output reads were bit-reversed a second time even though bit-reversed input already produced natural-order output.
+
+The board path also dropped the final input sample and wrote delayed magnitudes to the wrong display addresses. The corrected design uses deterministic read/settle/pipeline/write scheduling, width-safe fixed-point arithmetic, an aligned four-cycle result pipeline, and synchronous BRAM-facing resets. Those behaviors are now locked down by self-checking tests.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `rtl/` | Synthesizable SystemVerilog for the FFT, board controller, and display path |
-| `dv/` | Behavioral simulation testbench |
-| `data/` | Time-domain sample memory and Q1.15 twiddle coefficients |
-| `constraints/` | Minimal Urbana clock, reset, and HDMI pin constraints |
-| `ip/` | Vivado configuration files for the twiddle ROM, clock wizard, and HDMI transmitter |
-| `third_party/` | Bundled RealDigital HDMI transmitter IP (BSD 3-Clause) |
-| `scripts/` | Batch simulation, synthesis, and result-plotting helpers |
-| `assets/` | Generated diagnostic figure used by this README |
+| `rtl/` | Synthesizable SystemVerilog for the FFT, controller, and display path |
+| `dv/` | Self-checking core, board-pipeline, and display testbenches |
+| `data/` | Deterministic input samples and Q1.15 twiddle coefficients |
+| `constraints/` | Urbana clock, reset, HDMI pin, and interface constraints |
+| `ip/` | Vivado configurations for the twiddle ROM, clock wizard, and HDMI transmitter |
+| `third_party/` | Bundled RealDigital HDMI transmitter IP |
+| `scripts/` | Batch verification, implementation, and plotting tools |
+| `assets/` | Testbench-generated output figure used above |
 | `FFT_Project.xpr` | Vivado 2022.2 project file |
 
-Vivado caches, generated IP output products, run directories, simulation databases, and checkpoints are intentionally excluded. They can all be regenerated from the files above.
+Vivado caches, generated IP products, run directories, simulation databases, reports, checkpoints, and bitstreams are intentionally ignored. They are reproducible from the tracked sources.
 
-## Running the project
+## Reproducing the results
 
 Requirements:
 
 - AMD/Xilinx Vivado 2022.2
-- RealDigital Urbana board, or another Spartan-7 target with updated constraints
-- Python 3 with Matplotlib, only to regenerate the diagnostic figure
+- Python 3
+- Matplotlib, only for regenerating the output figure
+- RealDigital Urbana board for physical HDMI output; simulation and implementation do not require the board
 
-To inspect or build the hardware design, open `FFT_Project.xpr` in Vivado. If prompted, generate output products for the three IP blocks before synthesis. The synthesis top is `top` and the target part is `xc7s50csga324-1`.
+Run commands from the repository root.
 
-Run the behavioral diagnostic from the project directory with:
+### Exact FFT regression
 
 ```powershell
-vivado -mode batch -source scripts/run_sim.tcl
+powershell -ExecutionPolicy Bypass -File scripts/run_verify.ps1
 ```
 
-The testbench exercises DC, impulse, and bin-5 cosine inputs. It currently serves as a reproducible diagnostic for the known numerical artifacts rather than a passing golden-model regression. It also writes every complex output bin and its approximate magnitude to `FFT_Project.sim/sim_1/behav/xsim/fft_bins.csv`.
+This runs XSim, exports every real and imaginary bin, and compares all seven transforms against `scripts/verify_fft.py`. Any mismatch returns a failure.
 
-Regenerate the README figure from that CSV with:
+### Board and display simulations
+
+```powershell
+vivado -mode batch -source scripts/run_board_sim.tcl
+```
+
+This checks repeated transforms, sample/address alignment, magnitude writes, signed corner cases, pixel-to-bin mapping, bar scaling, blanking, and control-signal latency.
+
+### Full implementation and bitstream
+
+```powershell
+vivado -mode batch -source scripts/run_impl.tcl
+```
+
+The script synthesizes, optimizes, places, routes, checks setup and hold slack, generates DRC/CDC/methodology/utilization reports, writes a routed checkpoint, and produces `build/fft_visualizer.bit`. It exits with an error for negative timing slack or severe implementation violations.
+
+### Regenerate the figure
+
+After running the exact FFT regression:
 
 ```powershell
 python scripts/plot_fft_results.py
 ```
 
-Run a clean synthesis check with:
-
-```powershell
-vivado -mode batch -source scripts/run_synth.tcl
-```
-
-To visualize a different input signal on hardware, replace `data/samples.mem` with 256 signed 16-bit hexadecimal samples, one value per line, then regenerate the bitstream.
+To test another deterministic signal, replace `data/samples.mem` with 256 signed 16-bit hexadecimal samples, one per line, then rerun simulation or implementation.
 
 ## Third-party IP
 
-The HDMI/DVI encoder under `third_party/hdmi_tx_1.0/` is by Tinghui Wang / RealDigital.org and is distributed under the BSD 3-Clause terms included in its source headers. The remaining configured IP blocks are generated by Vivado.
+The HDMI/DVI encoder under `third_party/hdmi_tx_1.0/` is by Tinghui Wang / RealDigital.org and is distributed under BSD 3-Clause terms included in its source headers. The other configured IP blocks are generated by Vivado.
