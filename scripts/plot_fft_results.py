@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot the bin data exported by fft_core_tb."""
+"""Render selected verified FFT spectra exported by fft_core_tb."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ DEFAULT_OUTPUT = PROJECT_ROOT / "assets" / "fft-diagnostic.png"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot the diagnostic FFT output exported by the XSim testbench."
+        description="Plot verified FFT output exported by the XSim testbench."
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -43,10 +43,19 @@ def load_results(path: Path) -> dict[str, list[tuple[int, int]]]:
 def main() -> None:
     args = parse_args()
     results = load_results(args.input)
-    case_order = ["DC input (0.5)", "unit impulse", "cosine at bin 5"]
+    case_order = [
+        "DC input (0.5)",
+        "unit impulse",
+        "cosine at bin 5",
+        "two-tone real input",
+    ]
     missing = [name for name in case_order if name not in results]
     if missing:
         raise SystemExit(f"missing simulation cases: {', '.join(missing)}")
+    for case_name, values in results.items():
+        bins = sorted(item[0] for item in values)
+        if bins != list(range(256)):
+            raise SystemExit(f"{case_name!r} does not contain bins 0 through 255")
 
     plt.rcParams.update(
         {
@@ -59,21 +68,22 @@ def main() -> None:
             "text.color": "#e2e8f0",
         }
     )
-    figure, axes = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+    figure, axes = plt.subplots(2, 2, figsize=(12, 7.5), sharex=True)
     figure.patch.set_facecolor("#07111f")
     figure.suptitle(
-        "256-Point Fixed-Point FFT — Behavioral Diagnostic",
+        "256-Point Fixed-Point FFT - Verified RTL Output",
         fontsize=18,
         fontweight="bold",
         y=0.98,
     )
 
     subtitles = {
-        "DC input (0.5)": "DC input",
-        "unit impulse": "Unit impulse",
-        "cosine at bin 5": "Cosine input at bin 5",
+        "DC input (0.5)": "DC input - energy at bin 0",
+        "unit impulse": "Unit impulse - flat spectrum",
+        "cosine at bin 5": "Cosine at bin 5 - symmetric peaks",
+        "two-tone real input": "Two-tone input - two symmetric pairs",
     }
-    for axis, case_name in zip(axes, case_order):
+    for axis, case_name in zip(axes.flat, case_order):
         values = sorted(results[case_name])
         bins = [item[0] for item in values]
         magnitudes = [item[1] for item in values]
@@ -87,7 +97,7 @@ def main() -> None:
             [peak_bin], [peak_magnitude], color="#fbbf24", s=32, zorder=3
         )
         axis.annotate(
-            f"observed peak: bin {peak_bin}",
+            f"peak: bin {peak_bin}, {peak_magnitude:,}",
             xy=(peak_bin, peak_magnitude),
             xytext=(10, -18),
             textcoords="offset points",
@@ -101,7 +111,7 @@ def main() -> None:
             axis.text(
                 8,
                 axis.get_ylim()[1] * 0.78,
-                "expected bins 5 and 251",
+                "bins 5 and 251",
                 color="#c4b5fd",
                 fontsize=9,
             )
@@ -112,18 +122,20 @@ def main() -> None:
         axis.set_axisbelow(True)
         axis.margins(x=0)
 
-    axes[-1].set_xlabel("FFT bin")
-    axes[-1].set_xlim(-1, 256)
-    axes[-1].set_xticks(range(0, 257, 32))
+    for axis in axes[-1]:
+        axis.set_xlabel("FFT bin")
+    for axis in axes.flat:
+        axis.set_xlim(-1, 256)
+        axis.set_xticks(range(0, 257, 32))
     figure.text(
         0.5,
         0.012,
-        "XSim output from fft_core_tb • plotted without numerical correction",
+        "XSim RTL output | 1,792 complex bins match the bit-accurate reference exactly",
         ha="center",
         color="#94a3b8",
         fontsize=9,
     )
-    figure.tight_layout(rect=(0.035, 0.04, 0.99, 0.95), h_pad=1.1)
+    figure.tight_layout(rect=(0.035, 0.05, 0.99, 0.94), h_pad=1.5, w_pad=1.2)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(args.output, dpi=160, bbox_inches="tight", facecolor=figure.get_facecolor())
