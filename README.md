@@ -45,7 +45,55 @@ For the live hardware demo, Kyle built push-button controls around a real-time s
 
 The standalone portfolio build uses `data/samples.mem` as a deterministic input so anyone can reproduce the results without the original live control hardware. Kyle's button-driven source and sweep describe the integrated team demo rather than a separate input peripheral included in this repository.
 
-## How it works
+## FFT core architecture
+
+This is the part of the project I owned: a reusable, in-place 256-point radix-2 FFT engine. `fft_top.sv` connects the control, address, memory, twiddle, and arithmetic blocks. The board/display logic consumes the completed bins afterward; it is intentionally outside this core-focused view.
+
+```mermaid
+flowchart LR
+    start["start / load_enable"] --> top["fft_top.sv<br/>core integration + port arbitration"]
+    top --> control["fft_control.sv<br/>stage + butterfly counters<br/>READ / WAIT / PIPELINE / WRITE"]
+    control --> addr["fft_address_gen.sv<br/>x0, x1, twiddle addresses"]
+    addr --> ram["fft_bram.sv<br/>dual-port complex RAM"]
+    addr --> rom["blk_mem_gen_0<br/>Q1.15 twiddle ROM"]
+    ram -->|registered BRAM outputs| butterfly["butterfly.sv<br/>4 multiplies + complex add/sub"]
+    rom -->|tw_re, tw_im| butterfly
+    butterfly -->|y0, y1 writeback| ram
+    ram -->|natural-order read_data_re/im| bins["completed 256 complex bins"]
+```
+
+The input load happens while `busy=0`; the controller then reuses the same two RAM ports for every butterfly. Bit-reversed input addresses make the eight-stage DIT schedule finish in natural bin order, so no second output permutation is needed. The twiddle address is generated from the stage and butterfly offset, while the two data addresses identify the butterfly pair.
+
+### The four-cycle butterfly transaction
+
+The controller deliberately separates synchronous BRAM access from the registered arithmetic pipeline. That is the key timing and correctness boundary in the FFT core:
+
+```mermaid
+flowchart LR
+    idle["IDLE<br/>accept start"] --> read["READ_BUTTERFLY<br/>present x0/x1 + twiddle address"]
+    read --> wait["WAIT_MEMORY<br/>allow synchronous BRAM outputs to settle"]
+    wait --> pipe["PIPELINE_BUTTERFLY<br/>register 4 products"]
+    pipe --> write["WRITE_BUTTERFLY<br/>write y0/y1 to both RAM ports"]
+    write -->|next index or next stage| read
+    write -->|last stage complete| finish["FINISH<br/>pulse done"]
+```
+
+Inside `butterfly.sv`, the four signed Q1.15 products are kept at full width. The real and imaginary products are combined, shifted back to Q1.15, and each output is divided by two. Eight stages therefore apply an overall `1/256` scale factor; the final values are saturated to signed 16-bit range. This explicit pipeline avoids a BRAM-to-DSP-to-BRAM critical path at the 100 MHz FFT clock.
+
+### Core file design
+
+| File | Core responsibility |
+| --- | --- |
+| `rtl/fft_top.sv` | Top-level FFT wiring, load/read arbitration, and connections between control, address, RAM, ROM, and butterfly |
+| `rtl/fft_control.sv` | Six-state transaction FSM; advances the stage and butterfly index and generates `busy`, `write_enable`, and `done` |
+| `rtl/fft_address_gen.sv` | Computes the two in-place data addresses and the stage-dependent twiddle address |
+| `rtl/fft_bram.sv` | Synchronous dual-port complex sample memory used for in-place reads and writes |
+| `rtl/butterfly.sv` | Registered complex multiply, add/subtract, per-stage scaling, and signed saturation |
+| `ip/blk_mem_gen_0/blk_mem_gen_0.xci` | Vivado block-memory configuration for the twiddle ROM initialized from `data/twiddle256_q15.coe` |
+| `dv/fft_core_tb.sv` | Self-checking core regression; exports every input sample and complex output bin |
+| `scripts/verify_fft.py` | Bit-accurate Python reference model and exact CSV comparison |
+
+## Board data path (context)
 
 ```mermaid
 flowchart LR
@@ -62,11 +110,7 @@ flowchart LR
     mapper --> hdmi["HDMI TMDS serializer<br/>125 MHz clock"]
 ```
 
-The diagram follows the data path from deterministic samples through the FFT and into the video pipeline. The FFT controller owns the RAM schedule; the butterfly is reused for each stage, while the twiddle ROM supplies the stage coefficients. The display side crosses into its own clock domain before mapping the 256 magnitudes to HDMI bars.
-
-The core is a decimation-in-time, radix-2 FFT. Input samples are loaded in bit-reversed order, which leaves the completed spectrum in natural bin order. One pipelined butterfly is time-multiplexed across 128 operations per stage for eight stages.
-
-Samples and twiddle factors are signed 16-bit values; the twiddle table uses Q1.15. The butterfly keeps full-width intermediate products, converts the product back to Q1.15 with an arithmetic shift, and scales every stage by two. Eight scaled stages give an overall FFT factor of `1/256` while controlling overflow. Results are saturated to the signed 16-bit range.
+The downstream board path starts with the completed natural-order bins from the core above. The magnitude stage crosses into the display clock domain, maps the 256 values across the active video width, and sends the resulting bars through the HDMI TMDS transmitter.
 
 The board controller approximates complex magnitude as:
 
