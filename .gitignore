@@ -13,3 +13,7 @@
 *.dcp
 *.bit
 *.ltx
+
+# Python verification artifacts
+__pycache__/
+*.py[cod]

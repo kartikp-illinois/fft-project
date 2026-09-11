@@ -56,7 +56,7 @@ module fft_core_tb;
         end
     endtask
 
-    // input_kind: 0 = DC, 1 = impulse, 2 = cosine at tone_bin.
+    // input_kind selects one of the deterministic regression vectors.
     task automatic run_case(string name, integer input_kind, integer tone_bin);
         integer i;
         integer bin_magnitude;
@@ -67,6 +67,7 @@ module fft_core_tb;
         integer expected_b;
         integer max_unexpected;
         real angle;
+        real angle_second;
         begin
             $display("\n--- %s ---", name);
             reset_dut();
@@ -81,6 +82,22 @@ module fft_core_tb;
                     2: begin
                         angle = 2.0 * 3.14159265359 * tone_bin * i / FFT_SIZE;
                         load_data_re = $rtoi(16384.0 * $cos(angle));
+                    end
+                    3: begin
+                        angle = 2.0 * 3.14159265359 * tone_bin * i / FFT_SIZE;
+                        load_data_re = $rtoi(12000.0 * $cos(angle));
+                        load_data_im = $rtoi(12000.0 * $sin(angle));
+                    end
+                    4: begin
+                        angle = 2.0 * 3.14159265359 * 5 * i / FFT_SIZE;
+                        angle_second = 2.0 * 3.14159265359 * 37 * i / FFT_SIZE;
+                        load_data_re = $rtoi(8192.0 * $cos(angle) +
+                                              4096.0 * $cos(angle_second));
+                    end
+                    5: load_data_re = (i[0] == 1'b0) ? 16'sh7fff : 16'sh8000;
+                    6: begin
+                        load_data_re = ((i * 25173 + 13849) & 16'h3fff) - 8192;
+                        load_data_im = ((i * 13849 + 25173) & 16'h1fff) - 4096;
                     end
                     default: load_data_re = 0;
                 endcase
@@ -156,7 +173,7 @@ module fft_core_tb;
                         (max_unexpected > 8))
                         $fatal(1, "single-tone spectrum check failed");
                 end
-                default: $fatal(1, "unknown test case");
+                default: ;
             endcase
         end
     endtask
@@ -170,8 +187,12 @@ module fft_core_tb;
         run_case("DC input (0.5)", 0, 0);
         run_case("unit impulse", 1, 0);
         run_case("cosine at bin 5", 2, 5);
+        run_case("complex tone at bin 17", 3, 17);
+        run_case("two-tone real input", 4, 5);
+        run_case("full-scale Nyquist input", 5, 128);
+        run_case("deterministic complex noise", 6, 0);
         $fclose(csv_file);
-        $display("\nPASS: all canonical FFT checks completed.");
+        $display("\nPASS: all FFT regression cases completed.");
         $finish;
     end
 
