@@ -1,0 +1,15 @@
+# Vivado-generated state and build products
+.Xil/
+*.cache/
+*.gen/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.jou
+*.log
+*.str
+*.wdb
+*.dcp
+*.bit
+*.ltx

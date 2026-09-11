@@ -1,0 +1,144 @@
+`timescale 1ns / 1ps
+
+// Diagnostic smoke test for the 256-point FFT core. The transform is known to
+// retain numerical artifacts, so this test reports the observed peaks without
+// claiming golden-model equivalence.
+module fft_core_tb;
+
+    localparam WIDTH = 16;
+    localparam FFT_SIZE = 256;
+    localparam ADDR_WIDTH = $clog2(FFT_SIZE);
+
+    logic clk, rst, start, load_enable, done, busy;
+    logic [ADDR_WIDTH-1:0] load_addr, read_addr;
+    logic signed [WIDTH-1:0] load_data_re, load_data_im;
+    logic signed [WIDTH-1:0] read_data_re, read_data_im;
+
+    fft_top #(
+        .WIDTH(WIDTH),
+        .FFT_SIZE(FFT_SIZE)
+    ) dut (.*);
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    function automatic [7:0] bit_reverse(input [7:0] value);
+        bit_reverse = {value[0], value[1], value[2], value[3],
+                       value[4], value[5], value[6], value[7]};
+    endfunction
+
+    // Alpha-max plus beta-min magnitude approximation, beta = 3/8.
+    function automatic integer magnitude(input signed [15:0] re,
+                                         input signed [15:0] im);
+        integer abs_re, abs_im, max_val, min_val;
+        begin
+            abs_re = (re < 0) ? -re : re;
+            abs_im = (im < 0) ? -im : im;
+            max_val = (abs_re >= abs_im) ? abs_re : abs_im;
+            min_val = (abs_re >= abs_im) ? abs_im : abs_re;
+            magnitude = max_val + (min_val >> 2) + (min_val >> 3);
+        end
+    endfunction
+
+    task automatic reset_dut;
+        begin
+            rst = 1;
+            start = 0;
+            load_enable = 0;
+            load_addr = 0;
+            read_addr = 0;
+            load_data_re = 0;
+            load_data_im = 0;
+            repeat (5) @(posedge clk);
+            rst = 0;
+            repeat (5) @(posedge clk);
+        end
+    endtask
+
+    // input_kind: 0 = DC, 1 = impulse, 2 = cosine at tone_bin.
+    task automatic run_case(string name, integer input_kind, integer tone_bin);
+        integer i;
+        integer bin_magnitude;
+        integer max_magnitude;
+        integer min_magnitude;
+        integer peak_bin;
+        integer expected_a;
+        integer expected_b;
+        real angle;
+        begin
+            $display("\n--- %s ---", name);
+            reset_dut();
+
+            load_enable = 1;
+            for (i = 0; i < FFT_SIZE; i = i + 1) begin
+                load_addr = bit_reverse(i);
+                load_data_im = 0;
+                case (input_kind)
+                    0: load_data_re = 16'sh4000;
+                    1: load_data_re = (i == 0) ? 16'sh7fff : 0;
+                    2: begin
+                        angle = 2.0 * 3.14159265359 * tone_bin * i / FFT_SIZE;
+                        load_data_re = $rtoi(16384.0 * $cos(angle));
+                    end
+                    default: load_data_re = 0;
+                endcase
+                @(posedge clk);
+            end
+            load_enable = 0;
+
+            @(posedge clk);
+            start = 1;
+            @(posedge clk);
+            start = 0;
+            wait (done);
+            repeat (5) @(posedge clk);
+
+            max_magnitude = -1;
+            min_magnitude = 32'h7fffffff;
+            peak_bin = 0;
+            expected_a = 0;
+            expected_b = 0;
+
+            for (i = 0; i < FFT_SIZE; i = i + 1) begin
+                read_addr = bit_reverse(i);
+                repeat (2) @(posedge clk);
+                bin_magnitude = magnitude(read_data_re, read_data_im);
+
+                if (bin_magnitude > max_magnitude) begin
+                    max_magnitude = bin_magnitude;
+                    peak_bin = i;
+                end
+                if (bin_magnitude < min_magnitude)
+                    min_magnitude = bin_magnitude;
+                if (i == tone_bin)
+                    expected_a = bin_magnitude;
+                if ((tone_bin != 0) && (i == FFT_SIZE - tone_bin))
+                    expected_b = bin_magnitude;
+            end
+
+            $display("peak bin=%0d magnitude=%0d, range=[%0d, %0d]",
+                     peak_bin, max_magnitude, min_magnitude, max_magnitude);
+            if (input_kind == 0)
+                $display("expected DC bin 0 magnitude=%0d", expected_a);
+            else if (input_kind == 1)
+                $display("expected approximately flat impulse spectrum");
+            else
+                $display("expected tone bins %0d/%0d magnitudes=%0d/%0d",
+                         tone_bin, FFT_SIZE - tone_bin, expected_a, expected_b);
+        end
+    endtask
+
+    initial begin
+        run_case("DC input (0.5)", 0, 0);
+        run_case("unit impulse", 1, 0);
+        run_case("cosine at bin 5", 2, 5);
+        $display("\nFFT diagnostic complete.");
+        $finish;
+    end
+
+    initial begin
+        #10_000_000;
+        $fatal(1, "FFT diagnostic timed out");
+    end
+
+endmodule
